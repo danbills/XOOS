@@ -6,24 +6,24 @@
 #include <nlohmann/json.hpp>
 
 #include <xoos/enum/enum-util.h>
+#include <xoos/types/float.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
 #include <xoos/types/str-container.h>
 #include <xoos/yc-decode/yc-decoder.h>
 
-#include "core/column-names.h"
-#include "core/feature-normalization.h"
-#include "core/variant-info.h"
-#include "core/workflow.h"
+#include "column-names.h"
+#include "duplex-lowbq-mode.h"
+#include "feature-normalization.h"
 #include "homopolymer-filter.h"
 #include "sequencing-protocol.h"
-#include "xoos/types/float.h"
+#include "variant-info.h"
+#include "workflow.h"
 #include "yc-decode-method.h"
 
-using Json = nlohmann::json;
-using BaseType = xoos::yc_decode::BaseType;
-
 namespace xoos::svc {
+
+using BaseType = xoos::yc_decode::BaseType;
 
 /**
  * Synopsis:
@@ -34,8 +34,6 @@ namespace xoos::svc {
  * All workflow-specific default configurations in this file must match those in `resources/profiles_config.json`.
  * A unit-test was designed to ensure no mismatch between the two files.
  */
-
-// TODO: replace alternate names with their primary names and update JSON config files and model resources
 
 // Base quality values are either 5,22,39 (or 0,18,93 for legacy scale)
 // Threshold of 6 filters discordant bases in both scales
@@ -50,14 +48,10 @@ constexpr u32 kDuplexReadFamilySize{2};
 constexpr u32 kSimplexReadFamilySize{1};
 
 // Add tumor feature name prefix to a feature name
-static std::string AddTumorPrefix(const std::string& feature_name) {
-  return kTumorPrefix + feature_name;
-}
+std::string AddTumorPrefix(const std::string& feature_name);
 
 // Add normal feature name prefix to a feature name
-static std::string AddNormalPrefix(const std::string& feature_name) {
-  return kNormalPrefix + feature_name;
-}
+std::string AddNormalPrefix(const std::string& feature_name);
 
 // Default BAM features to be computed
 static const std::vector<std::string> kDefaultBamFeatures{
@@ -387,14 +381,6 @@ static const vec<std::string> kTumorNormalWgsBamFeatures{kNameChrom,
                                                          AddTumorPrefix(kNameAlignmentBias),
                                                          kNameContext};
 
-// VCF features for the `tumor-normal-wgs` workflow
-static const vec<std::string> kTumorNormalWgsVcfFeatures{
-    kNameChrom,       kNamePos,       kNameRef,       kNameAlt,       kNameTumorDP,       kNameNormalDP,
-    kNameNalod,       kNameNlod,      kNameTlod,      kNameMpos,      kNamePopAF,         kNameHapcomp,
-    kNameHapdom,      kNameRu,        kNameRpaRef,    kNameRpaAlt,    kNameSubtypeIndex,  kNameVariantType,
-    kNameUniq3mers,   kNameUniq4mers, kNameUniq5mers, kNameUniq6mers, kNamePre2BpContext, kNamePost2BpContext,
-    kNameHomopolymer, kNameDirepeat,  kNameTrirepeat, kNameQuadrepeat};
-
 // scoring feature names for the `tumor-normal-wgs` workflow
 static const vec<std::string> kTumorNormalWgsScoringNames{kNameNalod,
                                                           kNameNlod,
@@ -455,6 +441,62 @@ static const vec<std::string> kTumorNormalWgsScoringNames{kNameNalod,
 // categorical scoring feature names for the `tumor-normal-wgs` workflow
 static const vec<std::string> kTumorNormalWgsCategoricalNames{
     kNameRu, kNameStr, kNameSubtypeIndex, kNameVariantType, kNamePre2BpContext, kNamePost2BpContext, kNameContext};
+
+// BAM features for the `tumor-only-wgs` workflow
+static const vec<std::string> kTumorOnlyWgsBamFeatures{kNameChrom,
+                                                       kNamePos,
+                                                       kNameRef,
+                                                       kNameAlt,
+                                                       kNameSupport,
+                                                       kNameSupportReverse,
+                                                       kNameAlignmentBias,
+                                                       kNameRefSupport,
+                                                       kNameMapqMean,
+                                                       kNameMapqMin,
+                                                       kNameMapqLT60Ratio,
+                                                       kNameMapqLT40Ratio,
+                                                       kNameMapqLT30Ratio,
+                                                       kNameMapqLT20Ratio,
+                                                       kNameRefMapqMean,
+                                                       kNameRefMapqMin,
+                                                       kNameRefMapqLT60Ratio,
+                                                       kNameRefMapqLT40Ratio,
+                                                       kNameRefMapqLT30Ratio,
+                                                       kNameRefMapqLT20Ratio,
+                                                       kNameBaseqMean,
+                                                       kNameBaseqMin,
+                                                       kNameRefBaseqMean,
+                                                       kNameDistanceMean,
+                                                       kNameRefDistanceMean,
+                                                       kNameDuplexAF,
+                                                       kNameDuplex,
+                                                       kNameDuplexLowbq,
+                                                       kNameSimplex,
+                                                       kNameNonDuplex,
+                                                       kNameStrandBias,
+                                                       kNamePlusOnly,
+                                                       kNameMinusOnly,
+                                                       kNameWeightedDepth,
+                                                       kNameWeightedScore,
+                                                       kNameFamilysizeSum,
+                                                       kNameFamilysizeMean,
+                                                       kNameContext,
+                                                       kNameSubtypeIndex};
+
+// VCF features for the `tumor-only-wgs` workflow
+static const vec<std::string> kTumorOnlyWgsVcfFeatures{
+    kNameChrom,          kNamePos,         kNameRef,       kNameAlt,
+    kNameVariantType,    kNameTlod,        kNameMpos,      kNamePre2BpContext,
+    kNamePost2BpContext, kNameHomopolymer, kNameDirepeat,  kNameTrirepeat,
+    kNameQuadrepeat,     kNameUniq3mers,   kNameUniq4mers, kNameUniq5mers,
+    kNameUniq6mers,      kNamePopAF,       kNameRefAD,     kNameAltAD,
+    kNameAltAD2,         kNameRefAdAF,     kNameAltAdAF,   kNameAltAd2AF,
+    kNameVariantDensity, kNameHapcomp,     kNameHapdom,    kNameRu,
+    kNameRpaRef,         kNameRpaAlt,      kNameStr,       kNameGcContent};
+
+// BAM features for the `pon` workflow (minimal set for Panel of Normals generation)
+static const vec<std::string> kPanelOfNormalsBamFeatures{
+    kNameChrom, kNamePos, kNameRef, kNameAlt, kNameDuplexAF, kNameMapqMean};
 
 static const vec<std::string> kGermlineTaggingBamFeatures{kNameChrom,
                                                           kNamePos,
@@ -557,6 +599,19 @@ struct SnvIndelPaths {
  */
 SnvIndelPaths GetSnvIndelPaths(const std::vector<fs::path>& paths);
 
+// Per-model ML score thresholds for tumor-normal-wgs model selection.
+// Keyed by "{sample_type}-{aligner}" in the config JSON (e.g. "ffpe-bwa").
+struct ModelThresholds {
+  auto operator<=>(const ModelThresholds&) const = default;  // NOSONAR
+
+  f32 snv_min_ml_score{};
+  f32 indel_min_ml_score{};
+};
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ModelThresholds,
+                                                snv_min_ml_score,
+                                                indel_min_ml_score)  // NOSONAR — macro-generated code
+
 /**
  * @brief Configuration structure for the SVC submodule.
  * Contains all parameters needed to set up and run the SVC submodule.
@@ -627,6 +682,11 @@ struct SVCConfig {
   void ConfigureTumorOnlyTeWorkflow();
 
   /**
+   * @brief Configure parameters for the "tumor-only-wgs" workflow.
+   */
+  void ConfigureTumorOnlyWgsWorkflow();
+
+  /**
    * @brief Configure parameters for the "tumor-normal-wgs" workflow.
    */
   void ConfigureTumorNormalWgsWorkflow();
@@ -635,6 +695,11 @@ struct SVCConfig {
    * @brief Configure parameters for the "germline-tagging" workflow.
    */
   void ConfigureGermlineTaggingWorkflow();
+
+  /**
+   * @brief Configure parameters for the "pon" workflow (Panel of Normals feature extraction).
+   */
+  void ConfigurePanelOfNormalsWorkflow();
 
   std::vector<std::string> bam_feature_names;
   std::vector<FeatureColumn> feature_cols;
@@ -685,6 +750,10 @@ struct SVCConfig {
   f32 snv_min_ml_score{};
   f32 indel_min_ml_score{};
   u32 min_tumor_support{};
+  u32 max_normal_support{};
+  f32 min_tumor_af{};
+  u32 max_indel_size{};
+  f32 min_dp_ratio{};
   bool phased{};
   bool use_vcf_features{};
   u32 iterations{};
@@ -695,6 +764,12 @@ struct SVCConfig {
   yc_decode::BaseType min_base_type = BaseType::kDiscordant;
   u32 max_variants_per_read{};
   f32 max_variants_per_read_normalized{};
+  DuplexLowbqMode duplex_lowbq{DuplexLowbqMode::kInclude};
+
+  // Per-model ML score thresholds keyed by "{sample_type}-{aligner}" (e.g. "ffpe-bwa").
+  // Used by tumor-normal-wgs to tie thresholds to the auto-resolved model.
+  // When the key is absent or the map is empty, the top-level snv/indel_min_ml_score values are used.
+  StrMap<ModelThresholds> model_thresholds;
 };
 
 /**
@@ -735,8 +810,10 @@ NLOHMANN_JSON_SERIALIZE_ENUM(Workflow,
                              {{Workflow::kGermline, "germline"},
                               {Workflow::kGermlineMultiSample, "germline-multi-sample"},
                               {Workflow::kTumorOnlyTe, "tumor-only-te"},
+                              {Workflow::kTumorOnlyWgs, "tumor-only-wgs"},
                               {Workflow::kTumorNormalWgs, "tumor-normal-wgs"},
                               {Workflow::kGermlineTagging, "germline-tagging"},
+                              {Workflow::kPanelOfNormals, "pon"},
                               {Workflow::kCustom, "custom"}})
 
 // macro to (de)serialize the SequencingProtocol enum to/from JSON
@@ -759,52 +836,62 @@ NLOHMANN_JSON_SERIALIZE_ENUM(FeatureNormalization,
 NLOHMANN_JSON_SERIALIZE_ENUM(HomopolymerFilter,
                              {{HomopolymerFilter::kNone, "none"}, {HomopolymerFilter::kAlignmentEnd, "alignment-end"}})
 
+// JSON serialization for DuplexLowbqMode
+NLOHMANN_JSON_SERIALIZE_ENUM(DuplexLowbqMode,
+                             {{DuplexLowbqMode::kInclude, "include"}, {DuplexLowbqMode::kExclude, "exclude"}})
+
 // The following macro allows us to read in an SVCConfig directly from JSON.
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SVCConfig,
-                                   bam_feature_names,
-                                   snv_scoring_names,
-                                   indel_scoring_names,
-                                   indel_categorical_names,
-                                   snv_categorical_names,
-                                   vcf_feature_names,
-                                   n_classes,
-                                   workflow,
-                                   min_mapq,
-                                   min_bq,
-                                   min_dist,
-                                   max_variants_per_read,
-                                   max_variants_per_read_normalized,
-                                   min_family_size,
-                                   filter_homopolymer,
-                                   min_homopolymer_length,
-                                   sequencing_protocol,
-                                   use_vcf_features,
-                                   snv_iterations,
-                                   indel_iterations,
-                                   normalize_features,
-                                   decode_yc,
-                                   min_base_type,
-                                   snv_model_lgbm_params,
-                                   indel_model_lgbm_params,
-                                   scoring_names,
-                                   categorical_names,
-                                   model_lgbm_params,
-                                   snv_model_lgbm_prediction_params,
-                                   indel_model_lgbm_prediction_params,
-                                   model_lgbm_prediction_params,
-                                   iterations,
-                                   min_alt_counts,
-                                   min_af,
-                                   min_phased_af,
-                                   max_phased_af,
-                                   min_weighted_counts,
-                                   hotspot_min_weighted_counts,
-                                   min_ml_score,
-                                   hotspot_min_ml_score,
-                                   phased,
-                                   snv_min_ml_score,
-                                   indel_min_ml_score,
-                                   min_tumor_support)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(SVCConfig,
+                                                bam_feature_names,
+                                                snv_scoring_names,
+                                                indel_scoring_names,
+                                                indel_categorical_names,
+                                                snv_categorical_names,
+                                                vcf_feature_names,
+                                                n_classes,
+                                                workflow,
+                                                min_mapq,
+                                                min_bq,
+                                                min_dist,
+                                                max_variants_per_read,
+                                                max_variants_per_read_normalized,
+                                                duplex_lowbq,
+                                                min_family_size,
+                                                filter_homopolymer,
+                                                min_homopolymer_length,
+                                                sequencing_protocol,
+                                                use_vcf_features,
+                                                snv_iterations,
+                                                indel_iterations,
+                                                normalize_features,
+                                                decode_yc,
+                                                min_base_type,
+                                                snv_model_lgbm_params,
+                                                indel_model_lgbm_params,
+                                                scoring_names,
+                                                categorical_names,
+                                                model_lgbm_params,
+                                                snv_model_lgbm_prediction_params,
+                                                indel_model_lgbm_prediction_params,
+                                                model_lgbm_prediction_params,
+                                                iterations,
+                                                min_alt_counts,
+                                                min_af,
+                                                min_phased_af,
+                                                max_phased_af,
+                                                min_weighted_counts,
+                                                hotspot_min_weighted_counts,
+                                                min_ml_score,
+                                                hotspot_min_ml_score,
+                                                phased,
+                                                snv_min_ml_score,
+                                                indel_min_ml_score,
+                                                min_tumor_support,
+                                                max_normal_support,
+                                                min_tumor_af,
+                                                max_indel_size,
+                                                min_dp_ratio,
+                                                model_thresholds)
 
 // The following macro allows us to parse a collection of SVCConfig(s) from one JSON file, and select the workflow to
 // be executed. Each SVCConfig struct corresponds to the parameter settings for one specific workflow.

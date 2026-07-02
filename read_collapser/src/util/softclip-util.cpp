@@ -1,7 +1,6 @@
 #include "util/softclip-util.h"
 
 #include <algorithm>
-#include <string>
 
 #include <htslib/hts.h>
 #include <htslib/sam.h>
@@ -9,6 +8,7 @@
 #include <xoos/types/int.h>
 #include <xoos/types/vec.h>
 #include <xoos/util/math.h>
+#include <xoos/yc-decode/yc-decoder.h>
 
 #include "io/alignment.h"
 #include "util/read-util.h"
@@ -126,7 +126,8 @@ u32 LeftmostRefPos(const vec<AlignmentPtr>& reads_in_cluster, const bool trim_ov
   // Consensus matrix range: [105, 114)
   if (trim_overhangs) {
     for (const auto& alignment : reads_in_cluster) {
-      if (alignment->umi5p.has_value() && HasLeadingSoftclipOrInsertion(alignment)) {
+      if (alignment->IsFivePrimeComplete() && !alignment->mate_has_left_overhang &&
+          HasLeadingSoftclipOrInsertion(alignment)) {
         leftmost_rpos = std::max(leftmost_rpos, alignment->StartPos());
       }
     }
@@ -157,7 +158,8 @@ u32 RightmostRefPos(const vec<AlignmentPtr>& reads_in_cluster, const bool trim_o
   // Consensus matrix range: [105, 114)
   if (trim_overhangs) {
     for (const auto& alignment : reads_in_cluster) {
-      if (alignment->umi3p.has_value() && HasTrailingSoftclipOrInsertion(alignment)) {
+      if (alignment->IsThreePrimeComplete() && !alignment->mate_has_right_overhang &&
+          HasTrailingSoftclipOrInsertion(alignment)) {
         rightmost_rpos = std::min(rightmost_rpos, alignment->EndPos());
       }
     }
@@ -165,8 +167,8 @@ u32 RightmostRefPos(const vec<AlignmentPtr>& reads_in_cluster, const bool trim_o
   return rightmost_rpos;
 }
 
-vec<std::string> GetLeftSoftclipSequences(const vec<AlignmentPtr>& reads_in_cluster) {
-  vec<std::string> left_softclips;
+vec<SoftclipSequence> GetLeftSoftclipSequences(const vec<AlignmentPtr>& reads_in_cluster) {
+  vec<SoftclipSequence> left_softclips;
   if (reads_in_cluster.empty()) {
     return left_softclips;
   }
@@ -175,25 +177,39 @@ vec<std::string> GetLeftSoftclipSequences(const vec<AlignmentPtr>& reads_in_clus
   // may result in extraction of some aligned bases as part of the soft-clip sequences
   const u32 boundary = LeftmostRefPos(reads_in_cluster, true);
   for (const auto& read : reads_in_cluster) {
-    std::string softclip;
+    SoftclipSequence softclip;
     u32 softclip_length_with_overhang = math::SatSub(boundary, read->StartPos());
     u32 read_start = 0;
+    // softclip_length_with_overhang is initialized to the number of aligned bases to include as part of the soft-clip
+    // sequences. But if the read has no aligned bases then there would be no aligned bases to fetch so we set it to 0.
+    if (bam_cigar2rlen(ToSigned(read->record->core.n_cigar), bam_get_cigar(read->record.get())) == 0) {
+      softclip_length_with_overhang = 0;
+    }
+    const u32 read_length = ToUnsigned(read->record->core.l_qseq);
     if (HasLeadingSoftclipOrInsertion(read)) {
-      if (read->umi5p.has_value()) {
+      if (read->IsFivePrimeComplete() && !read->mate_has_left_overhang) {
         softclip_length_with_overhang += GetLengthOfLeadingSoftclipOrInsertion(read);
       } else {
+        // Skip the leading soft-clipped bases for partial reads
         read_start = GetLengthOfLeadingSoftclipOrInsertion(read);
       }
     }
-    softclip = GetSequence(bam_get_seq(read->record.get()), read_start, softclip_length_with_overhang);
+    if (read_start + softclip_length_with_overhang <= read_length) {
+      const vec<yc_decode::BaseType> base_types = read->GetBaseTypes();
+      softclip = {GetSequence(bam_get_seq(read->record.get()), read_start, softclip_length_with_overhang),
+                  base_types.size() == read_length
+                      ? vec<yc_decode::BaseType>(base_types.begin() + read_start,
+                                                 base_types.begin() + read_start + softclip_length_with_overhang)
+                      : vec<yc_decode::BaseType>()};
+    }
     left_softclips.push_back(softclip);
   }
 
   return left_softclips;
 }
 
-vec<std::string> GetRightSoftclipSequences(const vec<AlignmentPtr>& reads_in_cluster) {
-  vec<std::string> right_softclips;
+vec<SoftclipSequence> GetRightSoftclipSequences(const vec<AlignmentPtr>& reads_in_cluster) {
+  vec<SoftclipSequence> right_softclips;
   if (reads_in_cluster.empty()) {
     return right_softclips;
   }
@@ -202,17 +218,35 @@ vec<std::string> GetRightSoftclipSequences(const vec<AlignmentPtr>& reads_in_clu
   // may result in extraction of some aligned bases as part of the soft-clip sequences
   const u32 boundary = RightmostRefPos(reads_in_cluster, true);
   for (const auto& read : reads_in_cluster) {
-    std::string softclip;
+    SoftclipSequence softclip;
     u32 softclip_length_with_overhang = math::SatSub(read->EndPos(), boundary);
     u32 right_offset = math::SatSub(read->EndPos(), boundary);
+    // softclip_length_with_overhang and right_offset are initialized to the number of aligned
+    // bases to include as part of the soft-clip sequences. But if the read has no aligned bases
+    // then there would be no aligned bases to fetch so we set both to 0.
+    if (bam_cigar2rlen(ToSigned(read->record->core.n_cigar), bam_get_cigar(read->record.get())) == 0) {
+      right_offset = 0;
+      softclip_length_with_overhang = 0;
+    }
     const u32 read_length = ToUnsigned(read->record->core.l_qseq);
     if (HasTrailingSoftclipOrInsertion(read)) {
-      if (read->umi3p.has_value()) {
+      if (read->IsThreePrimeComplete() && !read->mate_has_right_overhang) {
+        // Only include the soft-clipped bases if the read has a complete (untruncated) 3' end
         softclip_length_with_overhang += GetLengthOfTrailingSoftclipOrInsertion(read);
       }
       right_offset += GetLengthOfTrailingSoftclipOrInsertion(read);
     }
-    softclip = GetSequence(bam_get_seq(read->record.get()), read_length - right_offset, softclip_length_with_overhang);
+    if (math::SatSub(read_length, right_offset) + softclip_length_with_overhang <= read_length) {
+      const vec<yc_decode::BaseType> base_types = read->GetBaseTypes();
+      softclip = {
+          GetSequence(
+              bam_get_seq(read->record.get()), math::SatSub(read_length, right_offset), softclip_length_with_overhang),
+          base_types.size() == read_length
+              ? vec<yc_decode::BaseType>(
+                    base_types.begin() + math::SatSub(read_length, right_offset),
+                    base_types.begin() + math::SatSub(read_length, right_offset) + softclip_length_with_overhang)
+              : vec<yc_decode::BaseType>()};
+    }
     right_softclips.push_back(softclip);
   }
 

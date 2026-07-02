@@ -7,6 +7,7 @@
 
 #include "compute-bam-features/alignment-reader.h"
 #include "core/bam-feature-collection.h"
+#include "core/duplex-lowbq-mode.h"
 #include "core/homopolymer-filter.h"
 #include "core/sequencing-protocol.h"
 #include "core/variant-info.h"
@@ -34,6 +35,7 @@ struct ComputeBamFeaturesParams {
   std::optional<StrUnorderedSet> tumor_rg_ids{};
   YcDecodeMethod decode_yc{YcDecodeMethod::kNone};
   yc_decode::BaseType min_base_type{};
+  DuplexLowbqMode duplex_lowbq{DuplexLowbqMode::kInclude};
 };
 
 /**
@@ -70,43 +72,10 @@ class ComputeBamRegionFeatures {
   // The following methods are made public to enable unit testing, but they are not intended
   // to be used directly.
 
- private:
   /**
    * @brief Map of read names to unique numeric identifiers for tracking reads across the region
    */
   using ReadNameToId = std::unordered_map<std::string, ReadId>;
-
-  /**
-   * @brief Processes and finalizes variant features after all reads have been analyzed.
-   *        Computes summary statistics, handles multiple variants at the same position,
-   *        and serializes features for output.
-   */
-  void ProcessVariantFeatures();
-
-  /**
-   * @brief Computes features for all alignments in a single BAM file within the specified region.
-   * @param region The genomic region to process
-   * @param ref_sequence The reference chromosome sequence
-   * @param skip_variants Set of known variants to skip during processing
-   * @param alignment_reader The BAM file reader to process
-   */
-  void ComputeFeaturesForBam(const Region& region,
-                             const std::string& ref_sequence,
-                             const std::optional<StrUnorderedSet>& skip_variants,
-                             const AlignmentReader& alignment_reader);
-
-  /**
-   * @brief Computes features for a single read alignment within the specified region.
-   *        Handles duplex vs non-duplex reads and YC tag decoding.
-   * @param region The genomic region being processed
-   * @param ref_sequence The reference chromosome sequence
-   * @param skip_variants Set of known variants to skip during processing
-   * @param b The BAM record to process
-   */
-  void ComputeFeaturesForRead(const Region& region,
-                              const std::string& ref_sequence,
-                              const std::optional<StrUnorderedSet>& skip_variants,
-                              const bam1_t* b);
 
   /**
    * @brief Breaks up a BAM into a list of regions. If bed regions are provided the bam is broken up based on the
@@ -160,6 +129,49 @@ class ComputeBamRegionFeatures {
                                                  const vec<FeatureColumn>& feature_cols);
 
   /**
+   * @brief Get the read id for the given read name. If the read name is not present in the read_names map, it is added
+   * to the map with the current_read_id as the value, current_read_id is then incremented.
+   * @param [in/out] read_names A map of read names to read ids
+   * @param [in] read_name The read name to get the id for
+   * @param [in/out] current_read_id The current read id to assign to the read name if it is not present in the map
+   * @return The read id for the given read name
+   */
+  static ReadId GetReadId(ReadNameToId& read_names, const std::string& read_name, ReadId& current_read_id);
+
+ private:
+  /**
+   * @brief Processes and finalizes variant features after all reads have been analyzed.
+   *        Computes summary statistics, handles multiple variants at the same position,
+   *        and serializes features for output.
+   */
+  void ProcessVariantFeatures();
+
+  /**
+   * @brief Computes features for all alignments in a single BAM file within the specified region.
+   * @param region The genomic region to process
+   * @param ref_sequence The reference chromosome sequence
+   * @param skip_variants Set of known variants to skip during processing
+   * @param alignment_reader The BAM file reader to process
+   */
+  void ComputeFeaturesForBam(const Region& region,
+                             const std::string& ref_sequence,
+                             const std::optional<StrUnorderedSet>& skip_variants,
+                             const AlignmentReader& alignment_reader);
+
+  /**
+   * @brief Computes features for a single read alignment within the specified region.
+   *        Handles duplex vs non-duplex reads and YC tag decoding.
+   * @param region The genomic region being processed
+   * @param ref_sequence The reference chromosome sequence
+   * @param skip_variants Set of known variants to skip during processing
+   * @param b The BAM record to process
+   */
+  void ComputeFeaturesForRead(const Region& region,
+                              const std::string& ref_sequence,
+                              const std::optional<StrUnorderedSet>& skip_variants,
+                              const bam1_t* b);
+
+  /**
    * @brief Helper function to compute the feature set for a single BAM record.
    * @param record The BAM record to compute features for
    * @param ref_seq The reference chromosome sequence
@@ -174,16 +186,6 @@ class ComputeBamRegionFeatures {
                                 ReadNameToId& read_names,
                                 ReadId& current_read_id,
                                 const std::optional<StrUnorderedSet>& skip_variants);
-
-  /**
-   * @brief Get the read id for the given read name. If the read name is not present in the read_names map, it is added
-   * to the map with the current_read_id as the value, current_read_id is then incremented.
-   * @param [in/out] read_names A map of read names to read ids
-   * @param [in] read_name The read name to get the id for
-   * @param [in/out] current_read_id The current read id to assign to the read name if it is not present in the map
-   * @return The read id for the given read name
-   */
-  static ReadId GetReadId(ReadNameToId& read_names, const std::string& read_name, ReadId& current_read_id);
 
   /**
    * @brief Resets all feature storage and tracking variables to prepare for processing a new genomic region.

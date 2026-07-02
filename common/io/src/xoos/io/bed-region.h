@@ -26,9 +26,17 @@ struct BedRegion {
    * NOTE: Some modules may be incorrectly using 1-based end positions with this struct
    */
   s64 end;
+  /**
+   * Extra data contained from the fourth column onward in the bed file, stored as a list of strings
+   */
+  std::vector<std::string> data;
 
   BedRegion(std::string in_chromosome, const s64 in_start, const s64 in_end)
       : chromosome(std::move(in_chromosome)), start(in_start), end(in_end) {
+  }
+
+  BedRegion(std::string in_chromosome, const s64 in_start, const s64 in_end, std::vector<std::string> in_data)
+      : chromosome(std::move(in_chromosome)), start(in_start), end(in_end), data(std::move(in_data)) {
   }
 
   bool Overlap(const s64 pos) const {
@@ -55,6 +63,11 @@ std::vector<BedRegion> PadBedRegions(std::vector<BedRegion>& regions, s64 paddin
 BedRegion ParseRegion(const std::string& region);
 
 std::vector<BedRegion> ParseBedFile(const std::string& bed_file_name);
+
+// use this if you need to parse additional columns from the bed file (fourth column onward), these will be stored in
+// the `data` field of BedRegion
+// will fail if the bed file has less than 4 columns
+std::vector<BedRegion> ParseBedFileWithExtraColumns(const std::string& bed_file_name);
 
 std::vector<BedRegion> PartitionRegions(const std::vector<BedRegion>& input_regions, s64 region_size);
 

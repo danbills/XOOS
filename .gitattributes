@@ -26,3 +26,5 @@ small_variant_caller/resources/*.txt.gz filter=lfs diff=lfs merge=lfs -text
 
 # Gitbook does not support LFS so supporting binaries (e.g., images) should go into docs/assets folder
 **/docs/assets/** -filter -diff -merge
+# Pipeline docs nest assets one level deeper (docs/<pipeline>/assets); exclude those too
+docs/*/assets/** -filter -diff -merge

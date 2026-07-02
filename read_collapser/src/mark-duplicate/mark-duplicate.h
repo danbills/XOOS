@@ -1,13 +1,21 @@
 #pragma once
 
+#include <unordered_set>
+
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/types/float.h>
+#include <xoos/util/hash.h>
 
 #include "core/read-collapser-options.h"
 #include "core/region.h"
 #include "io/alignment-io.h"
 
 namespace xoos::read_collapser {
+
+/// Per-thread set of read names (qnames) of primary alignments that were marked as duplicate
+/// and have an SA tag. Used to propagate duplicate status to supplementary alignments.
+using DuplicateReadNames = std::unordered_set<std::string, util::hash::TransparentStringHash, std::equal_to<>>;
 
 /**
  * Performed optimized duplicate marking on a BAM file. This mode will:
@@ -36,12 +44,16 @@ void MarkDuplicateAndMergeOutput(const ReadCollapserOptions& options);
  * @p super_region, clustering them according to configuration defined in @p options, assigning these clusters
  * an id from @p cluster_id_src, and writing the clusters to @p alignment_writer. Use @p super_regions to check if
  * any reads overlap other super regions.
+ *
+ * When mark_supplementary_alignments is enabled, the qnames of primary alignments that are marked as duplicate
+ * and have an SA tag are inserted into @p duplicate_read_names for later supplementary duplicate marking.
  */
 void DuplicateMarkSuperRegion(const ReadCollapserOptions& options,
                               u32 super_region_id,
                               const vec<Region>& super_region,
-                              const AlignmentReader& alignment_reader,
+                              const io::AlignmentReader& alignment_reader,
                               const AlignmentWriter& alignment_writer,
-                              const vec<vec<Region>>& super_regions);
+                              const vec<vec<Region>>& super_regions,
+                              DuplicateReadNames& duplicate_read_names);
 
 }  // namespace xoos::read_collapser

@@ -115,14 +115,15 @@ void UpdateDerivedFeatureValues(UnifiedReferenceFeature& feature) {
 
 void UpdateDerivedFeatureValues(VarIdToVarBamFeatures& variant_features,
                                 PosToRefBamFeatures& reference_features,
-                                const vec<VariantId>& vids) {
+                                const vec<VariantId>& vids,
+                                const bool include_duplex_lowbq) {
   auto& ref_feat = reference_features[vids[0].GetRefFeaturePos()];
   UpdateDerivedFeatureValues(ref_feat);
 
   // Tally total MAPQ sum, total BASEQ sum, duplex DP, and number of variants at this position.
   u32 total_mapq_sum = ref_feat.nonhomopolymer_mapq_sum;
   f64 total_baseq_sum = ref_feat.nonhomopolymer_baseq_sum;
-  ref_feat.duplex_dp = ref_feat.duplex_lowbq + ref_feat.support;
+  ref_feat.duplex_dp = (include_duplex_lowbq ? ref_feat.duplex_lowbq : 0) + ref_feat.support;
   ref_feat.num_alt = 0;
   for (const auto& vid : vids) {
     const auto itr = variant_features.find(vid);
@@ -132,7 +133,7 @@ void UpdateDerivedFeatureValues(VarIdToVarBamFeatures& variant_features,
       total_mapq_sum += var_feat.mapq_sum;
       total_baseq_sum += var_feat.baseq_sum;
       // Compute the total duplex dp here over all variant and ref positions with regular and lowbq
-      ref_feat.duplex_dp += var_feat.duplex_lowbq + var_feat.duplex;
+      ref_feat.duplex_dp += (include_duplex_lowbq ? var_feat.duplex_lowbq : 0) + var_feat.duplex;
     }
   }
   // Update features for each variant and calculate allele frequencies and other values.
@@ -146,12 +147,24 @@ void UpdateDerivedFeatureValues(VarIdToVarBamFeatures& variant_features,
     UpdateDerivedFeatureValues(var_feat);
 
     // Update features that depend on both variant-specific and reference position specific values and totals.
-    var_feat.mq_af = total_mapq_sum > 0 ? static_cast<f64>(var_feat.mapq_sum) / total_mapq_sum : 0;
-    var_feat.bq_af = total_baseq_sum > 0 ? var_feat.baseq_sum / total_baseq_sum : 0;
-    ref_feat.mq_af = total_mapq_sum > 0 ? static_cast<f64>(ref_feat.nonhomopolymer_mapq_sum) / total_mapq_sum : 0;
-    ref_feat.bq_af = total_baseq_sum > 0 ? static_cast<f64>(ref_feat.nonhomopolymer_baseq_sum) / total_baseq_sum : 0;
-    var_feat.duplex_af = ref_feat.duplex_dp > 0 ? (var_feat.duplex_lowbq + var_feat.duplex) / ref_feat.duplex_dp : 0;
-    ref_feat.duplex_af = ref_feat.duplex_dp > 0 ? (ref_feat.duplex_lowbq + ref_feat.support) / ref_feat.duplex_dp : 0;
+    var_feat.mq_af = 0;
+    ref_feat.mq_af = 0;
+    if (total_mapq_sum > 0) {
+      var_feat.mq_af = static_cast<f64>(var_feat.mapq_sum) / total_mapq_sum;
+      ref_feat.mq_af = static_cast<f64>(ref_feat.nonhomopolymer_mapq_sum) / total_mapq_sum;
+    }
+    var_feat.bq_af = 0;
+    ref_feat.bq_af = 0;
+    if (total_baseq_sum > 0) {
+      var_feat.bq_af = var_feat.baseq_sum / total_baseq_sum;
+      ref_feat.bq_af = static_cast<f64>(ref_feat.nonhomopolymer_baseq_sum) / total_baseq_sum;
+    }
+    var_feat.duplex_af = 0;
+    ref_feat.duplex_af = 0;
+    if (ref_feat.duplex_dp > 0) {
+      var_feat.duplex_af = ((include_duplex_lowbq ? var_feat.duplex_lowbq : 0) + var_feat.duplex) / ref_feat.duplex_dp;
+      ref_feat.duplex_af = ((include_duplex_lowbq ? ref_feat.duplex_lowbq : 0) + ref_feat.support) / ref_feat.duplex_dp;
+    }
     const u32 duplex_sum = var_feat.duplex + ref_feat.nonhomopolymer_support;
     if (duplex_sum > 0) {
       const auto duplex = static_cast<f64>(var_feat.duplex);
@@ -162,12 +175,14 @@ void UpdateDerivedFeatureValues(VarIdToVarBamFeatures& variant_features,
   }
 }
 
-void UpdateTumorNormalFeatures(BamRegionFeatureCollection& bam_feats, const vec<VariantId>& vids) {
+void UpdateTumorNormalFeatures(BamRegionFeatureCollection& bam_feats,
+                               const vec<VariantId>& vids,
+                               const bool include_duplex_lowbq) {
   // Update derived feature values for tumor sample's variant and reference features
-  UpdateDerivedFeatureValues(bam_feats.tumor_var_features, bam_feats.tumor_ref_features, vids);
+  UpdateDerivedFeatureValues(bam_feats.tumor_var_features, bam_feats.tumor_ref_features, vids, include_duplex_lowbq);
 
   // Update derived feature values for normal sample's variant and reference features
-  UpdateDerivedFeatureValues(bam_feats.normal_var_features, bam_feats.normal_ref_features, vids);
+  UpdateDerivedFeatureValues(bam_feats.normal_var_features, bam_feats.normal_ref_features, vids, include_duplex_lowbq);
 
   // Calculate tumor-normal AF ratio for each variant at this position
   for (const auto& vid : vids) {
@@ -210,11 +225,43 @@ static constexpr u32 kMapqCountThreshold30 = 30;
 static constexpr u32 kMapqCountThreshold20 = 20;
 static constexpr u32 kBaseqCountThreshold20 = 20;
 
+/**
+ * @brief Increment the duplex base-type counter for a variant position.
+ *
+ * When the YC tag is available, the per-position BaseType determines which counter
+ * (concordant / simplex / discordant) is incremented. When the tag is absent (legacy
+ * mode), duplex reads default to concordant.
+ */
+template <typename Feature>
+static void IncrementDuplexBaseType(Feature& feature, const AlignContext& align_ctx, const u64 read_pos) {
+  using enum BaseType;
+  if (!align_ctx.base_types.empty() && read_pos < align_ctx.base_types.size()) {
+    switch (align_ctx.base_types.at(read_pos)) {
+      case kConcordant:
+        ++feature.duplex_concordant;
+        break;
+      case kSimplex:
+        ++feature.duplex_simplex;
+        break;
+      case kDiscordant:
+        ++feature.duplex_discordant;
+        break;
+      default:
+        break;
+    }
+  } else if (align_ctx.read_type == ReadType::kDuplex) {
+    ++feature.duplex_concordant;
+  } else {
+    // Non-duplex read without base_types — no base-type counter to increment
+  }
+}
+
 void IncrementFeature(UnifiedVariantFeature& feature,
                       const AlignContext& align_ctx,
                       const f64 baseq,
                       const u64 distance,
-                      const bool near_non_concordant) {
+                      const bool near_non_concordant,
+                      const u64 read_pos) {
   if (ContainsReadIdInsertIfNot(feature.read_ids, align_ctx.read_id)) {
     // Skip previously processed reads to avoid double counting
     return;
@@ -236,6 +283,8 @@ void IncrementFeature(UnifiedVariantFeature& feature,
     feature.distance_sum_lowbq += distance;
     return;
   }
+
+  IncrementDuplexBaseType(feature, align_ctx, read_pos);
 
   if (align_ctx.plus_counts > 0 && align_ctx.minus_counts > 0) {
     ++feature.duplex;
@@ -643,7 +692,8 @@ void ProcessInsertion(BamRegionFeatureCollection& features, const AlignContext& 
     feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
     feat.context_index = UnifiedVariantFeature::ContextIndex(feat.context);
   }
-  IncrementFeature(feat, align_ctx, baseq_mean, min_distance, align_ctx.IsInsertionNearNonConcordantBase(info));
+  IncrementFeature(
+      feat, align_ctx, baseq_mean, min_distance, align_ctx.IsInsertionNearNonConcordantBase(info), info.read_pos);
 
   if (align_ctx.is_tumor_sample.has_value()) {
     UnifiedVariantFeature& tn_feat =
@@ -652,7 +702,8 @@ void ProcessInsertion(BamRegionFeatureCollection& features, const AlignContext& 
       tn_feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
       tn_feat.context_index = UnifiedVariantFeature::ContextIndex(tn_feat.context);
     }
-    IncrementFeature(tn_feat, align_ctx, baseq_mean, min_distance, align_ctx.IsInsertionNearNonConcordantBase(info));
+    IncrementFeature(
+        tn_feat, align_ctx, baseq_mean, min_distance, align_ctx.IsInsertionNearNonConcordantBase(info), info.read_pos);
   }
 }
 
@@ -688,7 +739,8 @@ void ProcessDeletion(BamRegionFeatureCollection& features, const AlignContext& a
     feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
     feat.context_index = UnifiedVariantFeature::ContextIndex(feat.context);
   }
-  IncrementFeature(feat, align_ctx, baseq, min_distance, align_ctx.IsDeletionNearNonConcordantBase(info));
+  IncrementFeature(
+      feat, align_ctx, baseq, min_distance, align_ctx.IsDeletionNearNonConcordantBase(info), info.read_pos - 1);
 
   if (align_ctx.is_tumor_sample.has_value()) {
     UnifiedVariantFeature& tn_feat =
@@ -697,7 +749,8 @@ void ProcessDeletion(BamRegionFeatureCollection& features, const AlignContext& a
       tn_feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
       tn_feat.context_index = UnifiedVariantFeature::ContextIndex(tn_feat.context);
     }
-    IncrementFeature(tn_feat, align_ctx, baseq, min_distance, align_ctx.IsDeletionNearNonConcordantBase(info));
+    IncrementFeature(
+        tn_feat, align_ctx, baseq, min_distance, align_ctx.IsDeletionNearNonConcordantBase(info), info.read_pos - 1);
   }
 }
 
@@ -735,7 +788,8 @@ void ProcessMismatch(BamRegionFeatureCollection& features, const AlignContext& a
     feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
     feat.context_index = UnifiedVariantFeature::ContextIndex(feat.context);
   }
-  IncrementFeature(feat, align_ctx, baseq, min_distance, align_ctx.IsMismatchNearNonConcordantBase(info));
+  IncrementFeature(
+      feat, align_ctx, baseq, min_distance, align_ctx.IsMismatchNearNonConcordantBase(info), info.read_pos);
 
   if (align_ctx.is_tumor_sample.has_value()) {
     UnifiedVariantFeature& tn_feat =
@@ -744,7 +798,8 @@ void ProcessMismatch(BamRegionFeatureCollection& features, const AlignContext& a
       tn_feat.context = Get1bpContext(align_ctx.ref_seq, info.ref_pos);
       tn_feat.context_index = UnifiedVariantFeature::ContextIndex(tn_feat.context);
     }
-    IncrementFeature(tn_feat, align_ctx, baseq, min_distance, align_ctx.IsMismatchNearNonConcordantBase(info));
+    IncrementFeature(
+        tn_feat, align_ctx, baseq, min_distance, align_ctx.IsMismatchNearNonConcordantBase(info), info.read_pos);
   }
 }
 
@@ -802,7 +857,8 @@ static void UpdateMatchFeatures(UnifiedReferenceFeature& feat,
                                 const u8 baseq,
                                 const u64 min_distance,
                                 const bool near_non_concordant,
-                                const bool not_in_homopolymer) {
+                                const bool not_in_homopolymer,
+                                const u64 read_pos) {
   const u8 mapq{align_ctx.bam_record->core.qual};
 
   if (align_ctx.read_type == ReadType::kSimplex) {
@@ -820,6 +876,8 @@ static void UpdateMatchFeatures(UnifiedReferenceFeature& feat,
     feat.distance_sum_lowbq += min_distance;
     return;
   }
+
+  IncrementDuplexBaseType(feat, align_ctx, read_pos);
 
   if (feat.support == 0) {
     feat.mapq_min = mapq;
@@ -896,12 +954,12 @@ void ProcessMatch(BamRegionFeatureCollection& features,
   const bool not_in_homopolymer = !align_ctx.homopolymer_start.has_value() || align_ctx.homopolymer_start > ref_pos;
 
   // update general features
-  UpdateMatchFeatures(feat, align_ctx, baseq, min_distance, near_non_concordant, not_in_homopolymer);
+  UpdateMatchFeatures(feat, align_ctx, baseq, min_distance, near_non_concordant, not_in_homopolymer, read_pos);
 
   if (align_ctx.is_tumor_sample.has_value()) {
     UnifiedReferenceFeature& tn_feat = align_ctx.is_tumor_sample.value() ? features.tumor_ref_features[ref_pos]
                                                                          : features.normal_ref_features[ref_pos];
-    UpdateMatchFeatures(tn_feat, align_ctx, baseq, min_distance, near_non_concordant, not_in_homopolymer);
+    UpdateMatchFeatures(tn_feat, align_ctx, baseq, min_distance, near_non_concordant, not_in_homopolymer, read_pos);
   }
 }
 

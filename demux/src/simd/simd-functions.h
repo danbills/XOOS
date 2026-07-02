@@ -4,6 +4,11 @@
 
 #pragma once
 
+#include <xoos/types/int.h>
+
+#include <array>
+#include <bit>
+
 #include "adapters/duplex/duplex-match.h"
 
 namespace simd {
@@ -17,7 +22,7 @@ namespace simd {
  * Every base is assigned 2 bits (A=00, C=01, G=10, T=11); this assignment is advantageous as
  * A/T and C/G are complementary (find the complement by flipping the bits).
  */
-void ConvertTo2Bit(const uint8_t* p_seq, uint32_t start, uint32_t length, uint8_t* p_output);
+void ConvertTo2Bit(const xoos::u8* p_seq, xoos::u32 start, xoos::u32 length, xoos::u8* p_output);
 
 /**
  * @brief Find the index of the first IsSpace() character in a string.
@@ -27,7 +32,7 @@ void ConvertTo2Bit(const uint8_t* p_seq, uint32_t start, uint32_t length, uint8_
  *      }
  * This function uses SIMD instructions to find the first space character in a string.
  */
-uint64_t FindFirstSpace(const uint8_t* buf, uint64_t begin, uint64_t end);
+xoos::u64 FindFirstSpace(const xoos::u8* buf, xoos::u64 begin, xoos::u64 end);
 
 /**
  * @brief Find the index of the first IsSpace() character in a string which is not ' '.
@@ -37,16 +42,13 @@ uint64_t FindFirstSpace(const uint8_t* buf, uint64_t begin, uint64_t end);
  *      }
  * This function uses SIMD instructions to find the first space character except ' ' in a string.
  */
-uint64_t FindFirstNonTrivialSpace(const uint8_t* buf, uint64_t begin, uint64_t end);
+xoos::u64 FindFirstNonTrivialSpace(const xoos::u8* buf, xoos::u64 begin, xoos::u64 end);
 
-// See https://news.ycombinator.com/item?id=38472174
-inline uint64_t Load64(uint8_t const* b) {
-  union {
-    uint64_t u64;
-    uint8_t u8[8];
-  } u = {.u8 = {b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]}};
-
-  return u.u64;
+// old union approach used UB trick as mentioned in https://news.ycombinator.com/item?id=38472174
+inline xoos::u64 Load64(const xoos::u8* const b) {
+  static_assert(std::endian::native == std::endian::little, "This function assumes a little-endian architecture.");
+  const std::array arr = {b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]};
+  return std::bit_cast<xoos::u64>(arr);
 }
 
 /** @brief An optimized version of functions used by edlib (pairwise alignment)
@@ -61,7 +63,7 @@ inline uint64_t Load64(uint8_t const* b) {
  * @param invert Reverse complement the sequence (true/false)
  */
 
-void TransformSequence(const char* buf, int begin, int end, unsigned char* digit, bool reverse = false,
+void TransformSequence(const char* buf, xoos::s32 begin, xoos::s32 end, xoos::u8* digit, bool reverse = false,
                        bool invert = false);
 
 /** @brief BuildPeq, an optimized version of functions used by edlib (pairwise alignment)
@@ -72,7 +74,7 @@ void TransformSequence(const char* buf, int begin, int end, unsigned char* digit
  * @param bit   In/Out bit representation of the sequence (four binary masks)
  */
 
-void BuildPeq(const unsigned char* digit, int length, uint64_t* bit);
+void BuildPeq(const xoos::u8* digit, xoos::s32 length, xoos::u64* bit);
 
 /**
  * @brief Copies matching bases from input to consensus sequence during alignment.
@@ -90,7 +92,7 @@ void BuildPeq(const unsigned char* digit, int length, uint64_t* bit);
  * @note The function may copy more bases than the returned count for efficiency;
  *       subsequent processing will overwrite any incorrect values.
  */
-int CopyMatchingSeq(const unsigned char* alignment, char* bases_in, char* consensus_out);
+xoos::s32 CopyMatchingSeq(const xoos::u8* alignment, char* bases_in, char* consensus_out);
 
 /**
  * @brief Sets quality values for matching positions during alignment.
@@ -108,7 +110,7 @@ int CopyMatchingSeq(const unsigned char* alignment, char* bases_in, char* consen
  * @note The function may set more quality values than the returned count for efficiency;
  *       subsequent processing will overwrite any incorrect values.
  */
-int CopyMatchingQual(const unsigned char* alignment, char* quality_out, char base);
+xoos::s32 CopyMatchingQual(const xoos::u8* alignment, char* quality_out, char base);
 
 /* @brief Replacement for std::reverse_copy of 8-bit values, which turned out to be time consuming. */
 void ReverseCopy(const unsigned char* p_start, const unsigned char* p_end, unsigned char* p_out);
@@ -130,14 +132,14 @@ struct FixedReadRecord;
  * at handling deletes/insertions were made.
  *
  */
-int FindSymmetryPosition(FixedReadRecord& record);
+s32 FindSymmetryPosition(FixedReadRecord& record);
 
-bool FindMarker(const CascadedLUTs& luts, FixedReadRecord& record, const int64_t offsets[8], const int64_t masks[8],
-                const int64_t types[8]);
+bool FindMarker(const CascadedLUTs& luts, FixedReadRecord& record, const s64* offsets, const s64* masks,
+                const s64* types);
 
 // This function looks for the hairpin sequence in the read using an approach that resembles Igor Mandric's algorithm.
 // It evaluates the popcnt() ("matching score") for 32 positions starting at the specified offset; it returns the
 // maximum score that was found.
-int64_t FindHairpinSliding(FixedReadRecord& record, int64_t offset);
+s64 FindHairpinSliding(FixedReadRecord& record, s64 offset);
 
 }  // namespace xoos::demux

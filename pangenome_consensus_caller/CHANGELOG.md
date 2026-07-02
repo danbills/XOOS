@@ -27,3 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pangenome-aware consensus correction for duplex reads aligned with Giraffe (`--add-graph-aln`).
 - BED file input to restrict processing to non-repetitive regions.
 - Multi-threaded processing.
+
+<!-- Version comparison links -->
+[1.0.0]: https://github.com/Roche-AXELIOS/XOOS/compare/0.80.1...1.0.0
+[0.80.1]: https://github.com/Roche-AXELIOS/XOOS/compare/0.80.0...0.80.1
+[0.80.0]: https://github.com/Roche-AXELIOS/XOOS/releases/tag/0.80.0

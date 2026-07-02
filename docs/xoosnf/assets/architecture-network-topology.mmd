@@ -1,0 +1,45 @@
+graph TB
+    subgraph VPC["VPC (10.0.0.0/16)"]
+        IGW["Internet Gateway"]
+        RT["Route Table"]
+        subgraph Subnets["Subnets (one per AZ)"]
+            S1["Subnet 10.0.0.0/24"]
+        end
+        SG["Security Group<br/>(egress-only)"]
+    end
+
+    subgraph IAM["IAM Roles"]
+        WR["Batch Worker Role<br/>(ECS container service)"]
+        IP["Instance Profile"]
+        DR["Driver Role<br/>(Batch + S3 + KMS + PassRole)"]
+        DAR["Data All-Access Role<br/>(S3 + KMS full access)"]
+        SFR["Spot Fleet Role<br/>(per SPOT compute env)"]
+    end
+
+    subgraph Compute["Batch Compute (per compute_resources entry)"]
+        LT["Launch Template<br/>(EBS, userdata, metadata)"]
+        CE["Compute Environment<br/>(SPOT or EC2)"]
+        JQ["Job Queue"]
+    end
+
+    subgraph Storage["Storage"]
+        S3["S3 Data Bucket<br/>(versioned, KMS-encrypted,<br/>intelligent tiering)"]
+        KMS["KMS Key"]
+    end
+
+    subgraph Notifications["Notifications"]
+        SQS["SQS Queue"]
+        CW["CloudWatch Event Rules<br/>(Batch job state changes)"]
+    end
+
+    IGW --> RT
+    RT --> S1
+    WR --> IP
+    IP --> CE
+    SG --> CE
+    S1 --> CE
+    LT --> CE
+    CE --> JQ
+    KMS --> S3
+    CW --> SQS
+    JQ --> CW

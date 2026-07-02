@@ -12,9 +12,6 @@ constexpr char kDiscordBaseQual{'&'}, kSimplexBaseQual{'7'}, kConcordBaseQual{'H
 // Edit operations.
 enum { kEdopMatch = 0, kEdopInsert = 1, kEdopDelete = 2, kEdopMismatch = 3, kEdopMatchMethyl = 4 };
 
-// alphabet for DNA bases conversion
-constexpr char kAlphabet[4] = {'A', 'C', 'G', 'T'};
-
 // YC tag components
 constexpr char kDefaultJunction{'+'};
 constexpr char kSwappedJunction{'-'};

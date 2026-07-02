@@ -1,5 +1,4 @@
-add_library(xoos_log
-        STATIC
+add_default_library(xoos_log
         xoos/log/logging.h
         xoos/log/logging.cpp
 )

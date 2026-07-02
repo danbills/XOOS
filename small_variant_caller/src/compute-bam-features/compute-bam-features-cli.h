@@ -111,6 +111,13 @@ vec<CLI::Option*> AddSharedOptions(CLI::App* const sub, std::shared_ptr<Params>&
                         ->default_val(defaults.min_homopolymer_length)
                         ->check(CLI::NonNegativeNumber));
 
+  options.push_back(
+      cli::AddEnumOption(sub,
+                         cli_opt_name::kDuplexLowbq,
+                         params->duplex_lowbq,
+                         "Include or exclude `duplex_lowbq` in `duplex_dp` and `duplex_af` feature calculations",
+                         defaults.duplex_lowbq));
+
   return options;
 }
 
@@ -151,6 +158,9 @@ void ApplyConfig(const cli::ConstAppPtr sub, const std::shared_ptr<Params>& para
   }
   if (sub->count(cli_opt_name::kMinBaseType) == 0) {
     params->min_base_type = params->config.min_base_type;
+  }
+  if (sub->count(cli_opt_name::kDuplexLowbq) == 0) {
+    params->duplex_lowbq = params->config.duplex_lowbq;
   }
 }
 

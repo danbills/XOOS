@@ -1,5 +1,4 @@
-add_library(xoos_compress
-        STATIC
+add_default_library(xoos_compress
         xoos/compress/compress.cpp
         xoos/compress/gzip.cpp
         xoos/compress/zstandard.cpp
@@ -19,10 +18,11 @@ find_package(ZLIB REQUIRED)
 find_package(zstd REQUIRED)
 
 target_link_xoos_libraries(xoos_compress
+        PUBLIC
+        types
         PRIVATE
         error
         log
-        types
         util
 )
 

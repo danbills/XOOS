@@ -1,6 +1,7 @@
 #include "alignment-util.h"
 
 #include <xoos/error/error.h>
+#include <xoos/util/sequence-functions.h>
 
 namespace xoos::demux {
 
@@ -149,8 +150,8 @@ void MethylConvert(char* consensus, u8* alignment, s32 alignment_length, char* x
       // shouldn't need to be changed since we currently use R1 as the base if mismatches occur
       // may need to change if we switch to using the higher quality read as the base
       const char base2 = consensus[consensus_pos + 1];
-      const char r2_base1 = kAlphabet[r2[r2_pos]];
-      const char r2_base2 = kAlphabet[r2[r2_pos + 1]];
+      const char r2_base1 = sequence::kDnaAlphabet[r2[r2_pos]];
+      const char r2_base2 = sequence::kDnaAlphabet[r2[r2_pos + 1]];
 
       if (op1 == kEdopMatch && op2 == kEdopMatch && base1 == 'C' && base2 == 'G') {
         // CG site but unmethylated (z)

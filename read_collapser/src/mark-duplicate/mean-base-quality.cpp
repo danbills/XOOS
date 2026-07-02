@@ -21,17 +21,30 @@ AlignmentPtr FindAlignmentWithMaxMeanBaseQ(const vec<AlignmentPtr>& alignments) 
     return nullptr;
   }
 
-  auto max_alignment = alignments.front();
-  auto max_mean_baseq = MeanBaseQ(max_alignment);
-  for (size_t i = 1; i < alignments.size(); ++i) {
-    const auto& i_alignment = alignments.at(i);
-    if (const f64 i_mean_baseq = MeanBaseQ(i_alignment); i_mean_baseq > max_mean_baseq) {
-      max_alignment = i_alignment;
-      max_mean_baseq = i_mean_baseq;
+  // Prefer full-length reads over partial reads.
+  // Record the read with the highest mean base quality in each category.
+  AlignmentPtr best_full = nullptr;
+  f64 best_full_baseq = -1.0;
+  AlignmentPtr best_partial = nullptr;
+  f64 best_partial_baseq = -1.0;
+
+  for (const auto& alignment : alignments) {
+    const f64 baseq = MeanBaseQ(alignment);
+    if (alignment->IsPartial()) {
+      if (baseq > best_partial_baseq) {
+        best_partial = alignment;
+        best_partial_baseq = baseq;
+      }
+    } else {
+      if (baseq > best_full_baseq) {
+        best_full = alignment;
+        best_full_baseq = baseq;
+      }
     }
   }
-
-  return max_alignment;
+  // If there are any full-length reads, return the one with the highest mean base quality. Otherwise, return the
+  // partial read with the highest mean base quality.
+  return best_full != nullptr ? best_full : best_partial;
 }
 
 }  // namespace xoos::read_collapser

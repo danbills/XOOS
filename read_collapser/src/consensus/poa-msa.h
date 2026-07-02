@@ -21,8 +21,13 @@ class PoaAligner {
    * @param mismatch_penalty The penalty for a mismatch. Must be non-negative.
    * @param gap_open_penalty The penalty for opening a gap. Must be non-negative.
    * @param gap_ext_penalty The penalty for extending a gap. Must be non-negative.
+   * @param alignment_type The type of alignment to use (Smith-Waterman for local, Needleman-Wunsch for global).
    */
-  explicit PoaAligner(s32 match_score, s32 mismatch_penalty, s32 gap_open_penalty, s32 gap_ext_penalty);
+  explicit PoaAligner(s32 match_score,
+                      s32 mismatch_penalty,
+                      s32 gap_open_penalty,
+                      s32 gap_ext_penalty,
+                      spoa::AlignmentType alignment_type);
 
   /**
    * Given a list of sequences, compute the multiple sequence alignment (MSA)

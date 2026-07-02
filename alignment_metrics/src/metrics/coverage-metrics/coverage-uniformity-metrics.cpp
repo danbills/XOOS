@@ -3,6 +3,8 @@
 #include <cmath>
 #include <tuple>
 
+#include <csv.hpp>
+
 #include <xoos/histogram/histogram-summary.h>
 #include <xoos/io/metadata-util.h>
 
@@ -19,11 +21,11 @@ CoverageUniformityMetrics& CoverageUniformityMetrics::operator+=(const CoverageU
 }
 
 void CoverageUniformityMetrics::WriteMeanCoverageHistogram(const fs::path& output_path,
-                                                           const io::Comments& comments) const {
+                                                           const io::CommandLineInfo& command_line_info) const {
   auto out = std::ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(out);
-  // Write comments
-  io::WriteTsvComments(writer, comments);
+  // Write metadata
+  io::WriteTsvMetadata(out, command_line_info);
   // Write header
   writer << std::vector{kNameMeanCoverage, kNameTargetRegionCount};
   // Write data
@@ -34,10 +36,10 @@ void CoverageUniformityMetrics::WriteMeanCoverageHistogram(const fs::path& outpu
 
 void CoverageUniformityMetrics::WriteCoverageUniformitySummaryTsv(
     const fs::path& output_path,
-    const io::Comments& comments,
+    const io::CommandLineInfo& command_line_info,
     const histogram::Histogram<u64>& filtered_coverage_histogram) const {
   CoverageUniformitySummary summary(filtered_coverage_histogram, region_counts_by_mean_coverage);
-  summary.WriteTsv(output_path, comments);
+  summary.WriteTsv(output_path, command_line_info);
 }
 
 /**
@@ -63,7 +65,7 @@ static u64 CountPositionsWithCoverageInRange(const histogram::Histogram<u64>& hi
 
 CoverageUniformitySummary::CoverageUniformitySummary(const histogram::Histogram<u64>& filtered_coverage_histogram,
                                                      const std::map<u64, u32>& mean_coverage_histogram)
-    : mean_coverage(filtered_coverage_histogram.IsEmpty() ? 0 : histogram::ComputeMean(filtered_coverage_histogram)),
+    : mean_coverage(filtered_coverage_histogram.IsEmpty() ? 0.0 : histogram::ComputeMean(filtered_coverage_histogram)),
       median_coverage(
           filtered_coverage_histogram.IsEmpty() ? 0 : histogram::ComputePercentile(filtered_coverage_histogram, 50)) {
   for (const auto& [mean_cov, count] : mean_coverage_histogram) {
@@ -77,26 +79,25 @@ CoverageUniformitySummary::CoverageUniformitySummary(const histogram::Histogram<
   if (mean_coverage > 0 && !filtered_coverage_histogram.IsEmpty()) {
     const u64 coverage_at_20_percentile = histogram::ComputePercentile(filtered_coverage_histogram, 20);
     if (coverage_at_20_percentile > 0) {
-      fold_80_base_penalty = static_cast<f64>(mean_coverage) / static_cast<f64>(coverage_at_20_percentile);
+      fold_80_base_penalty = mean_coverage / static_cast<f64>(coverage_at_20_percentile);
     }
-    const u64 bases_in_range =
-        CountPositionsWithCoverageInRange(filtered_coverage_histogram,
-                                          static_cast<u64>(0.5 * static_cast<f64>(mean_coverage)),
-                                          static_cast<u64>(2.0 * static_cast<f64>(mean_coverage)));
+    const u64 bases_in_range = CountPositionsWithCoverageInRange(
+        filtered_coverage_histogram, static_cast<u64>(0.5 * mean_coverage), static_cast<u64>(2.0 * mean_coverage));
     const u64 total_bases = histogram::ComputeCount(filtered_coverage_histogram);
     pct_bases_at_0_5x_to_2x_mean_coverage = (static_cast<f64>(bases_in_range) / static_cast<f64>(total_bases)) * 100.0;
   }
 }
 
-void CoverageUniformitySummary::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void CoverageUniformitySummary::WriteTsv(const fs::path& output_path,
+                                         const io::CommandLineInfo& command_line_info) const {
   auto out = std::ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(out);
-  // Write comments
-  io::WriteTsvComments(writer, comments);
+  // Write metadata
+  io::WriteTsvMetadata(out, command_line_info);
   // Write header
   writer << std::vector{kNameMetricName, kNameValue};
   // Write data
-  writer << std::make_tuple(kNameMeanCoverage, mean_coverage);
+  writer << std::vector{kNameMeanCoverage, ToStringWithPrecision(mean_coverage, histogram::kMeanPrecision)};
   writer << std::make_tuple(kNameMedianCoverage, median_coverage);
   if (fold_80_base_penalty.has_value()) {
     writer << std::vector{kNameFold80BasePenalty, ToStringWithPrecision(fold_80_base_penalty.value(), 6)};

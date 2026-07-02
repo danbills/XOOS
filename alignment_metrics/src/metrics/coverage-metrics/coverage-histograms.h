@@ -66,7 +66,7 @@ class CoverageHistograms {
    * For duplex datasets, the output will contain one column for the full coverage histogram
    * and one column for the concordant duplex coverage histogram.
    */
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
   /**
    * Output a summary of the coverage statistics to a TSV file.
    *
@@ -78,7 +78,7 @@ class CoverageHistograms {
    * For duplex dataset, the output will also contain a separate column
    * for the summary statistics of the concordant duplex coverage histogram.
    */
-  void WriteCoverageStatsTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteCoverageStatsTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
   /**
    * Output a summary of the coverage distribution to a TSV file.
    *
@@ -88,7 +88,8 @@ class CoverageHistograms {
    * For duplex datasets, the output will also contain a separate column
    * for the concordant duplex coverage histogram.
    */
-  void WriteCoverageDistributionSummaryTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteCoverageDistributionSummaryTsv(const fs::path& output_path,
+                                           const io::CommandLineInfo& command_line_info) const;
 
   CoverageHistograms& operator+=(const CoverageHistograms& other);
 

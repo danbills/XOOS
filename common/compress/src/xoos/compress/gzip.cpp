@@ -1,6 +1,7 @@
 #include "gzip.h"
 
 #include <fstream>
+#include <limits>
 
 #include <xoos/error/error.h>
 #include <xoos/types/vec.h>
@@ -36,7 +37,7 @@ void DecompressGzip(const fs::path& input_path, const fs::path& output_path, siz
 
   vec<char> buffer(buffer_size);
   while (true) {
-    const auto bytes_read = GzRead(in.get(), buffer.data(), buffer.size());
+    const auto bytes_read = GzRead(in.get(), buffer);
     if (bytes_read > 0) {
       out.write(buffer.data(), bytes_read);
     }
@@ -57,7 +58,7 @@ std::string DecompressGzip(const fs::path& input_path, size_t buffer_size) {
 
   vec<char> buffer(buffer_size);
   while (true) {
-    const auto bytes_read = GzRead(in.get(), buffer.data(), buffer.size());
+    const auto bytes_read = GzRead(in.get(), buffer);
     if (bytes_read > 0) {
       out.append(buffer.data(), bytes_read);
     }
@@ -90,8 +91,8 @@ void GzError(gzFile file) {
   }
 }
 
-void GzWrite(gzFile file, const char* data, size_t size) {
-  if (gzwrite(file, data, size) == 0) {
+void GzWrite(gzFile file, const char* const data, const u32 size) {
+  if (gzwrite(file, data, size) == 0) {  // NOSONAR(S5356) — zlib C API requires void*
     GzError(file);
   }
 }
@@ -102,12 +103,32 @@ void GzSetParams(gzFile file, int level, int strategy) {
   }
 }
 
-int GzRead(gzFile file, char* buffer, size_t size) {
-  int bytes_read = gzread(file, buffer, size);
-  if (bytes_read <= 0) {
+s32 GzRead(gzFile file, char* const buffer, const u32 size) {
+  const auto bytes_read = gzread(file, buffer, size);  // NOSONAR(S5356) — zlib C API requires void*
+  if (bytes_read < 0) {
     GzError(file);
   }
   return bytes_read;
+}
+
+void GzWrite(gzFile file, const char* const data, const size_t size) {
+  constexpr auto kMaxSize = std::numeric_limits<u32>::max();
+  if (size > kMaxSize) {
+    throw error::Error("GzWrite size {} exceeds maximum of {}", size, kMaxSize);
+  }
+  GzWrite(file, data, static_cast<u32>(size));
+}
+
+s32 GzRead(gzFile file, char* const buffer, const size_t size) {
+  constexpr auto kMaxSize = std::numeric_limits<u32>::max();
+  if (size > kMaxSize) {
+    throw error::Error("GzRead size {} exceeds maximum of {}", size, kMaxSize);
+  }
+  return GzRead(file, buffer, static_cast<u32>(size));
+}
+
+s32 GzRead(gzFile file, vec<char>& buffer) {
+  return GzRead(file, buffer.data(), buffer.size());
 }
 
 }  // namespace xoos::compress

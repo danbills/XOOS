@@ -1,7 +1,7 @@
 [requires]
-catch2/3.8.0
+catch2/3.14.0
 magic_enum/0.9.7
-spdlog/1.15.0
+spdlog/1.17.0
 
 [generators]
 CMakeDeps

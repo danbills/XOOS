@@ -4,13 +4,12 @@
 #include <xoos/histogram/histogram-summary.h>
 #include <xoos/io/metadata-util.h>
 
-#include <unordered_map>
 #include <vector>
 
+#include "adapter-design/adapter-design.h"
 #include "core/demux-and-trim-pipeline.h"
 #include "metrics-constraints.h"
 #include "sequence/matcher/match-info.h"
-#include "xoos/types/str-container.h"
 
 namespace fs = std::filesystem;
 
@@ -49,6 +48,10 @@ constexpr auto kStrandFwSigReads = "strand_fw_sig_reads";
 constexpr auto kStrandRvSigReads = "strand_rv_sig_reads";
 constexpr auto kTotalBases = "total_bases";
 constexpr auto kNonDuplexBases = "non_duplex_bases";
+constexpr auto kRawBases = "raw_bases";
+constexpr auto kTrimmedBases = "trimmed_bases";
+constexpr auto kUnassignedBases = "unassigned_bases";
+constexpr auto kFailedAssignedBases = "failed_assigned_bases";
 constexpr auto kMeanPassingReadLength = "mean_passing_read_length";
 
 /**
@@ -71,23 +74,25 @@ struct DuplexMetrics {
    */
   static DuplexMetrics SumTotal();
 
-  using SidPool = const std::unordered_map<uint, Barcode>;
-
   DuplexMetrics();
 
-  void WriteMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool) const;
+  void WriteMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool, AdapterType adapter_type) const;
 
-  void WriteRunMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool,
-                       const StrMap<u32>& sid_name_to_id) const;
+  void WriteRunMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool, AdapterType adapter_type) const;
 
-  void WriteSampleMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool,
-                          const StrMap<u32>& sid_name_to_id) const;
+  void WriteSampleMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool, AdapterType adapter_type) const;
 
   void WriteReadLengthDistributions(const DemuxAndTrimParam& params) const;
 
   void WriteSampleAssignmentMetrics(const DemuxAndTrimParam& params, const SidPool& sid_pool) const;
 
-  std::unordered_set<u32> FindAssignedSids(const StrMap<u32>& sid_name_to_id) const;
+  /**
+   * @brief Count the number of SIDs that have at least one assigned read (passing or failed).
+   *
+   * @param sid_pool The pool of SIDs to check against the collected metrics.
+   * @return Number of SIDs with a non-zero assigned read count.
+   */
+  u64 CountAssignedSids(const SidPool& sid_pool) const;
 
   void Add(const DuplexMetrics& other);
 
@@ -104,6 +109,10 @@ struct DuplexMetrics {
     u64 read_too_long{0};
     // Reads that were too short according to the min read length filter
     u64 read_too_short{0};
+
+    // Base count metrics
+    // Bases counts of unassigned reads
+    u64 raw_bases{0};
   };
 
   /**
@@ -120,7 +129,6 @@ struct DuplexMetrics {
     // R1 is swapped with R2 before alignment because R2 was longer than R1 and the read was full length
     PerSIDCount longer_r2_full_duplex{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
     // Reads that have both UMIs
-
     PerSIDCount both_umi{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
     // Reads that have only 5p UMI
     PerSIDCount only_5p_umi{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
@@ -128,6 +136,16 @@ struct DuplexMetrics {
     PerSIDCount only_3p_umi{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
     // Reads that didn't have an endadapter at all
     PerSIDCount no_endadapter{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
+
+    // Base count metrics
+    // Base counts of passing reads before trimming
+    PerSIDCount raw_bases{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
+    // Concordant duplex bases
+    PerSIDCount concordant_bases{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
+    // Discordant bases
+    PerSIDCount discordant_bases{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
+    // i.e. Non-duplex bases
+    PerSIDCount simplex_bases{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
   };
 
   /**
@@ -143,6 +161,10 @@ struct DuplexMetrics {
     PerSIDCount too_many_errors{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
     // Reads that had extra expected loop sequence but we failed to trim it
     PerSIDCount failed_hairpin_stem_trim_reads{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
+
+    // Base count metrics
+    // Base counts for failed assigned reads
+    PerSIDCount raw_bases{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
   };
 
   /**
@@ -172,26 +194,12 @@ struct DuplexMetrics {
     PerSIDCount rv_sig{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
   };
 
-  /**
-   * @brief Metrics on the base counts in passing reads.
-   * @note Every member should count per sample. The sum of all members should equal the total number of passing bases.
-   */
-  struct BaseCounts {
-    // Concordant duplex bases
-    PerSIDCount concordant{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
-    // Discordant bases
-    PerSIDCount discordant{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
-    // i.e. Non-duplex bases
-    PerSIDCount simplex{PerSIDCount(metrics_constraints::max_sid_id_index + 1, 0)};
-  };
-
   // Structs for count categories for organizing the metrics
   UnassignedCounts unassigned_counts;
   FailedAssignedCounts failed_assigned_counts;
   MidAdapterCounts midadapter_counts;
   StrandCounts strand_counts;
   PassingCounts passing_counts;
-  BaseCounts base_counts;
 
   // Distribution metrics (unknown SIDs)
   // TODO: Putting these in relevant structs above could remove redundancy (counts can be derived from distributions)
@@ -213,8 +221,5 @@ struct DuplexMetrics {
 
 // Helper function to report strand metrics
 void ReportStrandMetrics(const DuplexMetrics& global_results);
-
-// Helper function to convert from SID pool to a map of SID name to SID id for easier lookup when writing metrics
-StrMap<u32> ConvertSidPoolToSidNameToIdMap(const detail::SidPool& sid_pool);
 
 }  // namespace xoos::demux

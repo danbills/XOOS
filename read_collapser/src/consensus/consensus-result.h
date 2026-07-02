@@ -29,7 +29,7 @@ struct ConsensusResult {
    * sequence is called. It is the sum of the depths divided by the length of
    * the consensus sequence.
    */
-  u32 MeanClusterSize();
+  u32 MeanClusterSize() const;
 
   // Remove low depth bases from the beginning and end of the consensus sequence.
   void TrimEnds(u32 min_trim_read_support);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include <xoos/types/fs.h>
 
 namespace xoos::svc {

@@ -67,7 +67,7 @@ struct ErrorsBySubstitutionType {
   std::vector<SubstitutionError> errors_by_substitution_type{};
 
   std::vector<std::string> GetHeaders() const;
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   ErrorsBySubstitutionType& operator+=(const ErrorsBySubstitutionType& other);
   ErrorsBySubstitutionType& operator+=(

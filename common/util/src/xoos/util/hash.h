@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
+#include <string_view>
 
 namespace xoos::util::hash {
 
@@ -38,5 +40,27 @@ std::uint64_t HashRange(Iter begin, Iter end) {
   }
   return result;
 }
+
+/**
+ * Transparent hash function for strings that supports heterogeneous lookup in unordered containers.
+ * This allows us to use std::string_view or const char* as keys for lookup in an unordered_set of
+ * std::string without needing to construct temporary std::string objects.
+ */
+struct TransparentStringHash {
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  using is_transparent [[maybe_unused]] = void;
+
+  [[nodiscard]] std::size_t operator()(const std::string& str) const {
+    return std::hash<std::string>{}(str);
+  }
+
+  [[nodiscard]] std::size_t operator()(std::string_view str) const {
+    return std::hash<std::string_view>{}(str);
+  }
+
+  [[nodiscard]] std::size_t operator()(const char* str) const {
+    return std::hash<std::string_view>{}(str);
+  }
+};
 
 }  // namespace xoos::util::hash

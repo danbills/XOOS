@@ -1,0 +1,7 @@
+flowchart LR
+    A["① Gather input files\n(FASTQ / RDB)"]
+    --> B["② Demultiplex\n(match SID → assign sample)"]
+    --> C["③ Trim adapters\n(remove runway, SID, UMI)"]
+    --> D["④ Filter reads\n(length, error rate)"]
+    --> E["⑤ Write output\nper-sample FASTQ files"]
+    --> F["⑥ Calculate metrics\n(run & sample stats TSV)"]

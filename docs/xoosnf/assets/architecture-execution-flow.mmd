@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant User
+    participant CLI as xoos CLI
+    participant Loader as Config Loader
+    participant Executor as Executor (AWS/GCP)
+    participant Storage as S3 / GCS
+    participant Batch as AWS Batch / GCP Batch
+    participant Driver as Driver Container
+    participant NF as Nextflow
+    participant Workers as Worker Tasks
+
+    User->>CLI: xoos run --env aws_batch_bfx_ngs --pipeline-script .../main.nf ...
+    CLI->>Loader: resolve_env_config_path("aws_batch_bfx_ngs")
+    Loader-->>CLI: AwsBatchConfig
+    CLI->>Executor: submit(RunContext)
+    Executor->>Storage: Upload configs + driver script
+    Executor->>Batch: Submit driver job to driver queue
+    Batch->>Driver: Start container (nextflow/nextflow image)
+    Driver->>Storage: Download configs
+    Driver->>Driver: Restore .nextflow state (for -resume)
+    Driver->>NF: Run nextflow command
+    NF->>Workers: Submit tasks to worker queues
+    Workers->>Storage: Read inputs, write outputs
+    NF-->>Driver: Pipeline completes
+    Driver->>Storage: Upload logs + .nextflow state
+    Driver-->>Batch: Exit

@@ -16,31 +16,86 @@ namespace xoos::svc {
  * @see Genotype
  * @see ScoreCalculator
  */
-struct GenotypeScore {
+struct PredictionScore {
   // predicted genotype based on prediction probability score
-  Genotype genotype;
+  Genotype genotype = Genotype::kGTNA;
   // prediction probability score for the predicted genotype
-  f64 probability;
+  f64 probability = 0;
   // Phred score for genotype quality, calculated as -10 * log10(1 - P(genotype)), where P(genotype) is the prediction
   // probability score for the predicted genotype
-  s32 genotype_quality;
+  s32 genotype_quality = 0;
   // Phred score for variant quality, calculated as -10 * log10(1 - P(variant)), where P(variant) is the sum of
   // probabilities of all non-reference genotypes
-  f32 variant_quality;
+  f32 variant_quality = 0;
+  // vector of SHAP values for each feature followed by the base margin (the last value in the vector) for the predicted
+  // genotype
+  vec<f64> shap_values{};
 };
 
 class ScoreCalculator {
  public:
-  ScoreCalculator(const fs::path& model_file, size_t ncol, const std::string& prediction_params);
+  ScoreCalculator(const fs::path& model_file,
+                  size_t ncol,
+                  const std::string& prediction_params,
+                  bool predict_contributions);
+
+  /**
+   * @brief Extract feature names from the LightGBM model.
+   * @return Vector of feature names extracted
+   */
   vec<std::string> GetModelFeatureNames() const;
-  f64 CalculateScore(const vec<f64>& features) const;
-  GenotypeScore CalculateScoreGermline(const vec<f64>& features) const;
-  GenotypeScore CalculateScoreGermline(const vec<f64>& features, f64 min_score) const;
+
+  /**
+   * @brief Calculate the prediction probability score for a single set of features.
+   * @pre The LightGBM booster is configured to perform binary classification.
+   * @post If `_predict_contributions` is true, also calculate SHAP values for each feature and include them in the
+   * output `PredictionScore`. Otherwise, only calculate the overall prediction score without SHAP values.
+   * @param features Vector of feature values for a single variant.
+   * @return PredictionScore containing the predicted genotype, probability score, genotype quality, variant quality,
+   * and optionally SHAP values for each feature.
+   */
+  PredictionScore CalculateScore(const vec<f64>& features) const;
+
+  /**
+   * @brief Calculate prediction probability score for germline and germline-multi-sample
+   * workflows.
+   * @pre The LightGBM booster is configured to perform multi-class classification with the number of classes specified
+   * by `_num_classes`.
+   * @post If `_predict_contributions` is true, also calculate SHAP values for each feature and include them in the
+   * output `PredictionScore`. Otherwise, only calculate the overall prediction score without SHAP values.
+   * @param features Vector of feature values for a single variant.
+   * @return PredictionScore containing the predicted genotype, probability score, genotype quality, variant quality,
+   * and optionally SHAP values for each feature.
+   */
+  PredictionScore CalculateGermlineScore(const vec<f64>& features) const;
+
+  /**
+   * @brief Calculate prediction probability score with a minimum score threshold for germline and germline-multi-sample
+   * workflows.
+   * @pre The LightGBM booster is configured to perform multi-class classification with the number of classes specified
+   * by `_num_classes`.
+   * @post If `_predict_contributions` is true, also calculate SHAP values for each feature and include them in the
+   * output `PredictionScore`. Otherwise, only calculate the overall prediction score without SHAP values.
+   * @param features Vector of feature values for a single variant.
+   * @param min_score Minimum score threshold for returning a non-reference genotype. If the highest predicted score
+   * among all classes is below this threshold, the predicted genotype will be set to reference (GT=0/0) regardless of
+   * the actual scores.
+   * @return PredictionScore containing the predicted genotype, probability score, genotype quality, variant quality,
+   * and optionally SHAP values for each feature.
+   */
+  PredictionScore CalculateGermlineScore(const vec<f64>& features, f64 min_score) const;
 
  private:
+  // LightGBM booster handle
   lightgbm::BoosterPtr _booster{};
-  lightgbm::FastConfigPtr _fast_config{};
+  // Fast config handle for normal prediction
+  lightgbm::FastConfigPtr _predict_normal_config{};
+  // Fast config handle for feature contribution prediction (SHAP values)
+  lightgbm::FastConfigPtr _predict_contrib_config{};
+  // Number of classes in classification
   s32 _num_classes{};
+  // Flag whether feature contribution prediction is enabled
+  bool _predict_contributions{};
 };
 
 /**

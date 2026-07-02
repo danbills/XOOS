@@ -1,6 +1,6 @@
 # Alignment Metrics
 
-## Getting Started
+## Getting started
 
 ### Introduction
 
@@ -9,24 +9,24 @@ It provides metrics for read-level statistics, accuracy, and coverage including 
 homopolymer regions,
 which makes it suitable for both quality control and analysis of sequencing data.
 
-It can be used with various SBX chemistries, including v9.2, duplex, and simplex.
+It can be used with various SBX chemistries, including duplex (SBX-D and SBX-Fast) and simplex (SBX-S).
 It supports both demuxed and post-consensus aligned reads.
 
 The Alignment Metrics tool can produce the following 3 categories of metrics:
 
 - Read Metrics: Metrics on the number of reads and alignments (including count of mapped, duplicate, secondary,
   supplementary alignments, and unmapped reads) as well as read length distribution.
-  - (optional) Targeted Enrichment Read Metrics: For targeted enrichment datasets, we provide additional metrics on
-    the number of on-target reads and alignments.
-- Coverage: Metrics on the depth of coverage. For duplex datasets, we also provide metrics on the concordant duplex
-  coverage.
+  - (optional) Targeted Enrichment Read Metrics: For targeted enrichment datasets, additional metrics on
+    the number of on-target reads and alignments are provided.
+- Coverage: Metrics on the depth of coverage. For duplex datasets, metrics on the concordant duplex
+  coverage are also provided.
   - (optional) Homopolymer Coverage: Coverage metrics for regions of the reference that are homopolymers.
-  - (optional) Coverage Uniformity: For targeted enrichment datasets, we provide additional metrics on the
-    coverage uniformity across target regions.
+  - (optional) Coverage Uniformity: For targeted enrichment datasets, additional metrics on the
+    coverage uniformity across target regions are provided.
 - Accuracy: Accuracy and error rates at the base level, including error rates for substitutions, insertions, and
   deletions.
-  For intermolecular consensus data, we provide additional metrics on the base-level accuracy categorized by the
-  size and type of the read cluster from which the consensus read was generated.
+  For intermolecular consensus data, additional metrics on the base-level accuracy categorized by the
+  size and type of the read cluster from which the consensus read was generated are provided.
   - (optional) Homopolymer Accuracy: Accuracy metrics for regions of the reference that are homopolymers.
 
 The tool can optionally identify homopolymer regions from reference regions and calculate the coverage and accuracy
@@ -53,7 +53,7 @@ perform a full analysis that includes all metrics.
 
 #### Coverage Metrics Example Command
 
-If you don't need coverage metrics for homopolymer regions, you can run the following command to compute coverage
+If you do not need coverage metrics for homopolymer regions, you can run the following command to compute coverage
 metrics.
 
 ```bash
@@ -61,7 +61,6 @@ alignment_metrics coverage \
   --bam-input INPUT.bam \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
-  --min-baseq 38 \
   --threads 8
 ```
 
@@ -73,7 +72,6 @@ alignment_metrics coverage \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
   --enable-hp-metrics \
-  --min-baseq 38 \
   --threads 8
 ```
 
@@ -85,11 +83,8 @@ alignment_metrics coverage \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
   --min-base-type concordant \
-  --min-baseq 38 \
   --threads 8
 ```
-
-The `--min-baseq` and `--min-base-type` flags are optional and can be adjusted based on your dataset and analysis requirements.
 
 #### Coverage Metrics Input
 
@@ -103,7 +98,7 @@ Coverage metrics are written to a directory named `coverage` under the specified
 
 | Output Name                       | Description                                                                                                                                                                                                                                                                                                |
 |-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| coverage_histograms.tsv           | A histogram where the bins are depths of coverage and the values in each bin are the number of positions with the given coverage. For duplex datasets, the histogram contains two column, one for overall coverage and one for concordant duplex coverage.                                                 |
+| coverage_histograms.tsv           | A histogram where the bins are depths of coverage and the values in each bin are the number of positions with the given coverage. For duplex datasets, the histogram contains two columns, one for overall coverage and one for concordant duplex coverage.                                                 |
 | coverage_stats.tsv                | Summary information about the coverage, including mean, median, and percentiles. An additional column with summary information on concordant duplex coverage is produced for duplex datasets.                                                                                                              |
 | coverage_distribution_summary.tsv | Summary information describing the number of positions with coverage greater than or equal to a set of cutoff thresholds, as well as the total number of positions with and without coverage. An additional column with summary information on concordant duplex coverage is produced for duplex datasets. |
 
@@ -184,8 +179,9 @@ Notes:
 
 - `concordant_duplex_coverage` is only present for duplex datasets.
 - `post_filter_coverage` is the coverage after filtering out bases that do not pass the base-level filtering (base quality and base type filters).
-- Zero coverage positions are excluded from the calculation of mean, median, percentiles, and ratio metrics unless `--enable-te-metrics` is enabled.
-- If all positions have zero coverage (e.g. if all bases are filtered out), the summary will contain "NA" for all metrics.
+- Zero coverage positions are excluded from the calculation of mean, median, percentiles, and ratio metrics if no BED file is provided.
+  This is because without a BED file, the presence of alt and decoy contigs in the reference can lead to misleading coverage statistics.
+- If all positions have zero coverage (e.g. if all bases are filtered out), the summary will contain "NA" for all metrics when no BED file is provided, or "0" when a BED file is provided.
 
 ##### coverage_distribution_summary.tsv
 
@@ -211,7 +207,7 @@ Notes:
 
 | Metric name                                       | Definition                                                                                                                                                                                                                                                                                 | Denominator     |
 |---------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
-| total_positions                                   | The total number of reference positions considered. This should be equal to the number of reference bases (if no BED file is provided) or the number of positions covered by the provided BED file.                                                                                        | N/A             |
+| total_positions                                   | The total number of reference positions considered. This is equal to the number of reference bases (if no BED file is provided) or the number of positions covered by the provided BED file.                                                                                        | N/A             |
 | positions_with_no_coverage                        | The total number of reference positions with 0 coverage (or 0 concordance duplex coverage for the `concordant_duplex_coverage` column, 0 coverage after filtering by user-specified `min-baseq` and `min-base-type` for the `post_filter_coverage` column).                                | N/A             |
 | percentage_of_positions_with_no_coverage          | The percentage of reference positions with 0 coverage (or 0 concordance duplex coverage for the `concordant_duplex_coverage` column, 0 coverage after filtering by user-specified `min-baseq` and `min-base-type` for the `post_filter_coverage` column).                                  | total_positions |
 | positions_with_coverage                           | The total number of reference positions with coverage of at least 1x (or at least 1x concordant duplex coverage for the `concordant_duplex_coverage` column, at least 1x coverage after filtering by user-specified `min-baseq` and `min-base-type` for the `post_filter_coverage` column) | N/A             |
@@ -259,7 +255,7 @@ The metrics included are as follows:
 
 #### Accuracy Metrics Example Command
 
-If you don't need accuracy metrics for homopolymer regions, you can run the following command to compute accuracy
+If you do not need accuracy metrics for homopolymer regions, you can run the following command to compute accuracy
 metrics.
 
 ```bash
@@ -268,7 +264,6 @@ alignment_metrics accuracy \
   --bed-input TARGET.bed \
   --reference REFERENCE_GENOME.fa \
   --output-dir /PATH/TO/OUTPUT_DIR \
-  --min-baseq 38 \
   --threads 8
 ```
 
@@ -281,7 +276,6 @@ alignment_metrics accuracy \
   --reference REFERENCE_GENOME.fa \
   --output-dir /PATH/TO/OUTPUT_DIR \
   --enable-hp-metrics \
-  --min-baseq 38 \
   --threads 8
 ```
 
@@ -294,11 +288,8 @@ alignment_metrics accuracy \
   --reference REFERENCE_GENOME.fa \
   --output-dir /PATH/TO/OUTPUT_DIR \
   --min-base-type concordant \
-  --min-baseq 38 \
   --threads 8
 ```
-
-The `--min-baseq` and `--min-base-type` flags are optional and can be adjusted based on your dataset and analysis requirements.
 
 #### Accuracy Metrics Input
 
@@ -350,7 +341,7 @@ Note: Unless otherwise specified, metrics in this section only consider bases th
 ##### base_level_accuracy_summary.tsv
 
 This file contains the total count of errors of each type (substitution, insertion, and deletion) and their
-corresponding Phred scores.
+corresponding Phred quality scores.
 The columns in this file are as follows:
 
 ```text
@@ -377,20 +368,20 @@ where `type` is one of the following: `total_aligned_bases`, `substitutions`, `i
 For `insertion_events`, `deletion_events`, and `indel_events`, insertions and deletions of any length are each counted as a single event,
 whereas for `inserted_bases`, `deleted_bases`, and `indel_bases`, each base involved in an insertion or deletion is counted as a separate error.
 
-We don't distinguish between `substitution_bases` and `substitution_events` because we consider each base mismatch (substitution) as an independent event.
+The tool does not distinguish between `substitution_bases` and `substitution_events` because each base mismatch (substitution) is considered an independent event.
 In the metric output, there are two duplicate rows for `substitutions`, one with `denominator` as `total_aligned_bases + indel_events` and the other with `denominator` as `total_aligned_bases + indel_bases`.
 The two rows have identical `count`s, but the `percentage` and `phred` values differ slightly due to the different denominators used.
 
-For each type of error, we also provide the Phred-scale accuracy for errors of that type, which is calculated as follows:
+For each type of error, the Phred-scale accuracy is also provided, calculated as follows:
 
 $$\min \{ 93, -10 \times \log_{10}\frac{\text{number of errors}}{\text{total bases + indels}} \}$$
 
-Additionally, we report the total number of positions being considered for accuracy metrics, as well as positions skipped due to low depth
+Additionally, the output reports the total number of positions being considered for accuracy metrics, as well as positions skipped due to low depth
 or high alt allele fraction (e.g. a potential variant site).
 
 | Metric name                                       | Definition                                                                                                                                                                                          |
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| total_positions                                   | The total number of reference positions considered. This should be equal to the number of reference bases (if no BED file is provided) or the number of positions covered by the provided BED file. |
+| total_positions                                   | The total number of reference positions considered. This is equal to the number of reference bases (if no BED file is provided) or the number of positions covered by the provided BED file. |
 | positions_skipped_due_to_low_depth                | The total number of reference positions skipped due to low depth. The depth threshold is specified by `--min-depth`.                                                                                |
 | positions_skipped_due_to_high_alt_allele_fraction | The total number of reference positions skipped due to high alt allele fraction (e.g. a potential variant site). The alt allele fraction threshold is specified by `--max-alt-allele-fraction`.     |
 
@@ -557,9 +548,9 @@ the [Definitions for Homopolymer Accuracy](#definitions-for-homopolymer-accuracy
 
 ##### qscore_stats.tsv
 
-This file contains information about the distribution of base quality scores and their correlation with empirical error
+This file contains information about the distribution of base-call quality scores and their correlation with empirical error
 rates.
-This metric is useful for evaluating the accuracy of predicted base quality scores in relation to the actual observed
+This metric is useful for evaluating the accuracy of predicted base-call quality scores in relation to the actual observed
 error rates in the dataset.
 
 The columns in this file are as follows:
@@ -610,7 +601,7 @@ Read metrics are written to a directory named `read` under the specified output 
 | Output Name                | Description                                                                                                                                                                                                                                        |
 |----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | read_metrics_summary.tsv   | Counts and percentage of mapped, unmapped, duplicate, supplementary, secondary reads as well as reads with mapping quality 0 and reads that did not pass the quality filter.                                                                       |
-| read_length_histograms.tsv | A histogram where the bins are read lengths and the values in each bin are the number of reads of that length. For datasets with read type information (full/partial), we also output the number of full and partial reads for each histogram bin. |
+| read_length_histograms.tsv | A histogram where the bins are read lengths and the values in each bin are the number of reads of that length. For datasets with read type information (full/partial), the number of full and partial reads for each histogram bin is also included. |
 | read_length_summary.tsv    | Summary information about the read length, including mean, median, standard deviation, and percentiles. Additional columns for the full and partial read lengths are produced for dataset with read type information (full/partial).               |
 
 For intermolecular consensus datasets, the following additional metrics are generated:
@@ -733,7 +724,7 @@ Notes:
 - This metric file contains information on both alignments and reads. Alignments and reads are related but distinct concepts. See [here](#general-definitions) for more details.
 - Unlike `read_metrics_summary.tsv` and other metrics files, which only consider reads that intersect with regions in the provided BED file (if any),
 `total_mapped_alignments_in_bam` in `read_metrics_te.tsv` considers all mapped alignments in the BAM file, regardless of whether they intersect with the BED regions.
-- `total_mapped_alignments_in_bam` is calculated from the BAM index and includes primary, secondary, and supplementary alignments. This may lead to a slightly lower on-target rate when compared to calculations based solely on primary alignments.
+- `total_mapped_alignments_in_bam` is calculated from the BAM index and includes primary, secondary, and supplementary alignments. This can lead to a slightly lower on-target rate when compared to calculations based solely on primary alignments.
 
 The columns in this file are as follows:
 
@@ -749,7 +740,7 @@ The rows are the following metrics:
 | on_target_alignments           | The number of [alignments](#general-definitions) that intersect with at least one region in the provided BED file. This includes any supplementary and secondary alignments that align to the target regions. | total_mapped_alignments_in_bam |
 | on_target_reads_passing_filter | The number of [reads](#general-definitions) that intersect with at least one region in the provided BED file and pass the read filters.                                                                       | total_mapped_alignments_in_bam |
 
-`on_target_alignments` in this file should be sum of `mapped_reads`, `secondary_alignments`, and `supplementary_alignments` from `read_metrics_summary.tsv`.
+`on_target_alignments` in this file equals the sum of `mapped_reads`, `secondary_alignments`, and `supplementary_alignments` from `read_metrics_summary.tsv`.
 
 ##### read_length_histograms.tsv
 
@@ -774,7 +765,7 @@ Notes:
 
 - `full_read_count` and `partial_read_count` columns are only present if the dataset has read type information (full/partial).
 - Read length distribution and summary are calculated based on mapped primary alignments. Unmapped reads, secondary, and supplementary alignments are not included in read length metrics regardless of the filter settings.
-- Unmapped reads are excluded from read length metrics because we report the length without soft-clipped bases which is determined by the alignment and CIGAR string. Unmapped reads are not aligned and do not have CIGAR strings.
+- Unmapped reads are excluded from read length metrics because the reported length excludes soft-clipped bases, which is determined by the alignment and CIGAR string. Unmapped reads are not aligned and do not have CIGAR strings.
 - Supplementary and secondary alignments are excluded from read-length metrics to avoid double counting since each read can have multiple secondary and supplementary alignment records.
 
 Metrics in `read_length_histograms.tsv` satisfy the following constraint:
@@ -829,7 +820,6 @@ alignment_metrics all \
   --reference REFERENCE_GENOME.fa \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
-  --min-baseq 38 \
   --threads 8
 ```
 
@@ -841,12 +831,11 @@ alignment_metrics all \
   --reference REFERENCE_GENOME.fa \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
-  --min-baseq 38 \
   --enable-hp-metrics \
   --threads 8
 ```
 
-For duplex datasets, you may want to set the `--min-base-type` flag to `concordant` to filter out simplex and discordant duplex bases.
+For duplex datasets, set the `--min-base-type` flag to `concordant` to filter out simplex and discordant duplex bases.
 
 ```bash
 alignment_metrics all \
@@ -855,11 +844,8 @@ alignment_metrics all \
   --bed-input TARGET.bed \
   --output-dir /PATH/TO/OUTPUT_DIR \
   --min-base-type concordant \
-  --min-baseq 38 \
   --threads 8
 ```
-
-The `--min-baseq` and `--min-base-type` flags are optional and can be adjusted based on your dataset and analysis requirements.
 
 #### All Metrics Input
 
@@ -882,19 +868,19 @@ and [Read Metrics](#read-metrics-usage).
   other are merged.
 - Each thread processes a region, calculating metrics for each region. The calculated metrics are stored in a metrics
   container owned by the thread.
-  - For each region, we fetch the reads overlapping with the region.
+  - For each region, the reads overlapping with the region are fetched.
   - If homopolymer accuracy is requested, homopolymer regions in the reference are identified.
-  - We create a pileup entry for each reference position in the region that is covered by a read. Information such as
+  - A pileup entry is created for each reference position in the region that is covered by a read. Information such as
       error count and depth of coverage is stored in the pileup entry.
-  - The reads are processed in sorted order, and for each read, we calculate metrics based on the CIGAR string and
-      store the collected information in the pileup entry.
-  - We collect metrics and erase the pileup entries once they are no longer needed.
+  - The reads are processed in sorted order, and for each read, metrics are calculated based on the CIGAR string and
+      the collected information is stored in the pileup entry.
+  - Metrics are collected and pileup entries are erased once they are no longer needed.
 - The per-thread metrics containers are merged into a final metrics container, which is used to produce the output
   files.
 
 This describes the high-level algorithm used to generate the metrics.
 
-![Algorithm overview](docs/assets/algorithm-overview.svg)
+![Algorithm overview](docs/assets/per-thread-metrics-worker.svg)
 
 Each thread is associated with a metrics worker that processes super regions assigned to it.
 The metrics worker fetches reads overlapping with the sub-regions within the super region and processes each read to
@@ -903,12 +889,10 @@ update the metrics.
 Each metrics worker has its own metrics container to store the metrics calculated for the regions it processes.
 The per-thread metrics are merged into the final metrics at the end.
 
-![Per-thread metrics worker](docs/assets/per-thread-metrics-worker.svg)
-
 #### Discordant Homopolymer Masking in Duplex Reads
 
-By default, when extracting qualities from regions in duplex reads, we look for homopolymers within the individual reads
-and set the quality to discordant if any of the bases within the homopolymer is discordant.
+By default, when extracting qualities from regions in duplex reads, the tool looks for homopolymers within the individual reads
+and sets the quality to discordant if any of the bases within the homopolymer is discordant.
 These modified duplex base types are used for calculating accuracy metrics.
 This behavior can be disabled with a flag or if the read is not a duplex read.
 
@@ -949,14 +933,14 @@ metrics (e.g. `reads_passing_filter`, etc.). These filters are not applied for r
 | Parameter          | Description                                                                                                                                                                                                                                              | Value(s)                                                                        |
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
 | -e/--exclude-flags | Exclude alignments from coverage metrics, accuracy metrics, and post-filter read metrics if any bits in their FLAG field match the specified decimal integer. Refer to <https://broadinstitute.github.io/picard/explain-flags.html> for flag generation. | Integer [default: 3332, i.e. supplementary, secondary, unmapped, and duplicate] |
-| -Q/--min-mapq      | Minimum mapping quality. Reads with a mapping quality less than the threshold are not considered for coverage metrics, accuracy metrics, and post-filter read metrics.                                                                                   | Integer from 0 to 255 [default: 0]                                              |
+| -Q/--min-mapq      | Minimum mapping quality. Reads with a mapping quality less than the threshold are not considered for coverage metrics, accuracy metrics, and post-filter read metrics.                                                                                   | Integer from 0 to 255 [default: 4]                                              |
 
 #### Read Trimming Options
 
 Alignment Metrics allows trimming of bases from the start and/or end of each read before calculating metrics.
 
 Bases trimmed from the read will not contribute to coverage metrics, accuracy metrics, and read length metrics.
-Trimming may cause some reads to have zero length after trimming; such reads will be excluded from all metrics calculations.
+Trimming can cause some reads to have zero length after trimming; such reads will be excluded from all metrics calculations.
 Additionally, if trimming results in a read alignment that no longer overlaps with a region of interest specified in the BED file,
 that read will be excluded from all metrics calculations.
 
@@ -972,8 +956,8 @@ will not contribute to accuracy metrics and post-filter coverage metrics, but th
 
 | Parameter                    | Description                                                                                                                                                                                                                  | Value(s)                                                        |
 |------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
-| -q/--min-baseq               | Minimum base quality. Bases with a base quality less than the threshold are not considered for accuracy and post-filter coverage metrics.                                                                                    | Integer from 0 to 255 [default: 0]                              |
-| --min-base-type              | Minimum duplex base type. For duplex datasets, bases with a base type worse than the threshold are not considered for accuracy and post-filter coverage metrics. For simplex datasets, it should always be set to `simplex`. | One of `{discordant, simplex, concordant}` [default: `simplex`] |
+| -q/--min-baseq               | Minimum base quality. Bases with a base quality less than the threshold are not considered for accuracy and post-filter coverage metrics.                                                                                    | Integer from 0 to 255 [default: 30]                              |
+| --min-base-type              | Minimum duplex base type. For duplex datasets, bases with a base type worse than the threshold are not considered for accuracy and post-filter coverage metrics. For simplex datasets, it must always be set to `simplex`. | One of `{discordant, simplex, concordant}` [default: `simplex`] |
 | --disable-base-type-decoding | Skip decoding of duplex base types from YC tags in the BAM file. When this flag is set, all bases are treated as simplex bases.                                                                                              | Flag [default: false]                                           |
 
 The base type filter and base quality filter work conjunctively.
@@ -1007,7 +991,7 @@ and `all` subcommands.
 | Parameter                 | Description                                                                                                                                                                                                                                     | Value(s)                   |
 |---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
 | --min-depth               | Minimum depth. Positions with a total depth below the threshold do not contribute to accuracy metrics. For HP metrics, positions with depth less than the threshold are not filtered out but are not considered for alt allele fraction filter. | Integer >= 0 [default: 10] |
-| --max-alt-allele-fraction | Maximum alt allele fraction to consider an error a sequencing error instead of a germline variant. For each position, errors with an alt allele fraction greater than the threshold at a given position do not contribute to accuracy metrics.  | Float [default: 0.3]       |
+| --max-alt-allele-fraction | Maximum alt allele fraction to consider an error a sequencing error instead of a germline variant. For each position, errors with an alt allele fraction greater than the threshold at a given position do not contribute to accuracy metrics.  | Float [default: 0.1]       |
 | --max-cluster-size-bin    | Maximum cluster size for computing errors by cluster size. Errors originating in a consensus read generated from a cluster of size larger than the threshold will be put into the `max-cluster-size+` bin.                                      | Integer > 0 [default 50]   |
 
 #### Homopolymer Accuracy and Coverage Options
@@ -1067,9 +1051,9 @@ regions processed.
 
 #### Discordant Homopolymer Masking Options
 
-By default, when extracting base qualities and base types from a read, we look for homopolymers within the read and set the quality to discordant if any of the bases within the homopolymer is discordant.
+By default, when extracting base qualities and base types from a read, the tool looks for homopolymers within the read and sets the quality to discordant if any of the bases within the homopolymer is discordant.
 These modified duplex base types and qualities are used for calculating accuracy metrics and post-filter coverage metrics.
-If a read is a duplex read with YC tag, we use the YC tag to identify discordant duplex bases unless `--disable-base-type-decoding` is enabled. If the read does not have a YC tag (e.g. is a simplex read or intermolecular consensus read), we consider a base to be discordant if the base quality is less than or equal to 5.
+If a read is a duplex read with YC tag, the YC tag is used to identify discordant duplex bases unless `--disable-base-type-decoding` is enabled. If the read does not have a YC tag (e.g. is a simplex read or intermolecular consensus read), a base is considered discordant if the base quality is less than or equal to 5.
 
 The following options are used to control the behavior of discordant homopolymer masking and are only applicable for the
 `coverage`, `accuracy`, and `all` subcommands.
@@ -1085,11 +1069,11 @@ Table of known bugs or other information to share:
 
 | Issue                                                                             | Description of Issue                                                                                                                                                                                                                                                                                                                                        | Resolution/Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 |-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Crashing due to excessive memory usage                                            | The Alignment Metrics tool processes metrics by region. It may crash with a `std::bad_alloc` error message if the region size is too large and exceeds the available memory.                                                                                                                                                                                | Consider reducing the region size with the `--region-size` option or increasing the available memory.                                                                                                                                                                                                                                                                                                                                                    |
-| Crashing due to excessive memory usage when calculating target enrichment metrics | When calculating target enrichment metrics, region partitioning is disabled to ensure accurate counting of target regions and mean coverage per target region. Large regions in the BED file are not partitioned even if they exceed the region size. This may lead to high memory usage if the target regions are large.                                   | Ensure that the provided BED file is indeed a target panel BED file as regions in a typical target panel BED file should be small and well-defined. If the target regions are large, consider running the tool with fewer threads or increasing the available memory. You may also manually partition the large target region into smaller regions by editing the BED file, but note that this may affect the accuracy of the target enrichment metrics. |
+| Crashing due to excessive memory usage                                            | The Alignment Metrics tool processes metrics by region. It can crash with a `std::bad_alloc` error message if the region size is too large and exceeds the available memory.                                                                                                                                                                                | Consider reducing the region size with the `--region-size` option or increasing the available memory.                                                                                                                                                                                                                                                                                                                                                    |
+| Crashing due to excessive memory usage when calculating target enrichment metrics | When calculating target enrichment metrics, region partitioning is disabled to ensure accurate counting of target regions and mean coverage per target region. Large regions in the BED file are not partitioned even if they exceed the region size. This can lead to high memory usage if the target regions are large.                                   | Ensure that the provided BED file is indeed a target panel BED file as regions in a typical target panel BED file are expected to be small and well-defined. If the target regions are large, consider running the tool with fewer threads or increasing the available memory. You can also manually partition the large target region into smaller regions by editing the BED file, but note that this can affect the accuracy of the target enrichment metrics. |
 | Post-filter coverage is higher than concordant duplex coverage for duplex reads   | A common misconception is that post-filter coverage implies high-quality coverage. This is not necessarily true, as post-filter coverage simply refers to the coverage after applying base-level filters (base quality and base type filters).                                                                                                              | Check `--min-base-type` and `--min-baseq` settings. The recommended `min-base-type` is `concordant` and the recommended `min-baseq` is 38 for duplex datasets.                                                                                                                                                                                                                                                                                           |
 | Post-filter coverage is 0 or N/A                                                  | For simplex datasets and intermolecular consensus datasets, all bases are considered simplex bases. If the dataset is duplex but does not have a YC tag, all bases will also be treated as simplex bases. In these cases, if `--min-base-type` is set to `concordant`, no bases will pass the base type filter, resulting in 0 or N/A post-filter coverage. | For simplex datasets, intermolecular consensus datasets, and any dataset without YC tags, set `--min-base-type` to `simplex`.                                                                                                                                                                                                                                                                                                                            |
-| Crashing due to malformed YC tag in BAM record                                    | If a BAM record has a malformed YC tag, the tool may crash when attempting to deserialize the YC tag.                                                                                                                                                                                                                                                       | Check the error message for the read name of the BAM record with the malformed YC tag. This usually indicates a problem with upstream tools. Alternatively, you can bypass YC tag deserialization by enabling `--disable-base-type-decoding`.                                                                                                                                                                                                               |
+| Crashing due to malformed YC tag in BAM record                                    | If a BAM record has a malformed YC tag, the tool can crash when attempting to deserialize the YC tag.                                                                                                                                                                                                                                                       | Check the error message for the read name of the BAM record with the malformed YC tag. This usually indicates a problem with upstream tools. Alternatively, you can bypass YC tag deserialization by enabling `--disable-base-type-decoding`.                                                                                                                                                                                                               |
 
 ## Appendix
 
@@ -1100,13 +1084,13 @@ Table of known bugs or other information to share:
 | Term          | Definition                                                                                                                                                                                                                          |
 |---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Read          | A single sequencing read from the BAM file.                                                                                                                                                                                         |
-| Alignment     | A single alignment of a read to the reference genome. A read may have multiple alignments, including primary, secondary, and supplementary alignments.                                                                              |
+| Alignment     | A single alignment of a read to the reference genome. A read can have multiple alignments, including primary, secondary, and supplementary alignments.                                                                              |
 | Mapped read   | A read that has at least one alignment to the reference genome.                                                                                                                                                                     |
 | Unmapped read | A read that is not aligned to the reference genome. Includes both placed and unplaced unmapped reads.                                                                                                                               |
 | Forward read  | A read that is aligned in the forward direction relative to the reference genome.                                                                                                                                                   |
 | Reverse read  | A read that is aligned in the reverse direction relative to the reference genome.                                                                                                                                                   |
-| Full read     | Reads with a complete insert. We currently use UMIs as a proxy for determining full reads by considering any read that contains both expected UMIs (e.g., both 5' and 3' UMIs are present) as full.                                 |
-| Partial read  | A read with an incomplete insert. We currently use UMIs as a proxy for determining partial reads by considering any read that is missing one of the two expected UMIs (e.g., only a 5' UMI or only a 3' UMI is present) as partial. |
+| Full read     | Reads with a complete insert. UMIs are currently used as a proxy for determining full reads by considering any read that contains both expected UMIs (e.g., both 5' and 3' UMIs are present) as full.                                 |
+| Partial read  | A read with an incomplete insert. UMIs are currently used as a proxy for determining partial reads by considering any read that is missing one of the two expected UMIs (e.g., only a 5' UMI or only a 3' UMI is present) as partial. |
 
 #### Definitions for Consensus Reads
 
@@ -1133,7 +1117,7 @@ Table of known bugs or other information to share:
 
 Structure of a duplex read:
 
-![Definitions for duplex reads](docs/assets/duplex-read-definitions.svg)
+![SBX-D adapter structure](docs/assets/sbx-d-adapter.svg)
 
 Examples of concordant, discordant, and simplex bases:
 
@@ -1154,10 +1138,6 @@ R2:       ACGTATTTGAAATGT
 | Homopolymer             | A stretch of repeating identical bases of length greater than or equal to 2.                                                                                                                                     |
 | Homopolymer region      | A region in the reference genome that contains a homopolymer.                                                                                                                                                    |
 | Spanning read           | A read that covers a homopolymer region with at least one extra base on both sides of the region.                                                                                                                |
-| Effective read          | A spanning read where all bases aligned to the homopolymer region pass the quality and base type filter. Unless otherwise specified, all homopolymer insertions in an effective read should also be homogeneous. |
+| Effective read          | A spanning read where all bases aligned to the homopolymer region pass the quality and base type filter. Unless otherwise specified, all homopolymer insertions in an effective read must also be homogeneous. |
 | Homogeneous insertion   | An insertion in a homopolymer region of the same base as the homopolymer base. For example, an insertion of A in a homopolymer of AAAAA.                                                                         |
 | Heterogeneous insertion | An insertion in a homopolymer region of a different base from the homopolymer base. For example, an insertion of T in a homopolymer of AAAAA.                                                                    |
-
-### Contributing
-
-For contribution guidelines, please refer to [CONTRIBUTING.md](../CONTRIBUTING.md).

@@ -238,6 +238,12 @@ void BamAuxAppend(bam1_t* record, const std::string& name, const u32 value) {
   }
 }
 
+void BamAuxAppend(bam1_t* record, const std::string& name, const s32 value) {
+  if (bam_aux_append(record, name.c_str(), 'i', sizeof(s32), reinterpret_cast<const u8*>(&value)) == -1) {
+    throw error::Error("Failed to append BAM aux tag '{}' with value '{}': {}", name, value, strerror(errno));
+  }
+}
+
 void BamAuxAppend(bam1_t* record, const std::string& name, const std::string& value) {
   const auto len = static_cast<int>(value.size()) + 1;
   if (bam_aux_append(record, name.c_str(), 'Z', len, reinterpret_cast<const u8*>(value.c_str())) == -1) {
@@ -247,6 +253,15 @@ void BamAuxAppend(bam1_t* record, const std::string& name, const std::string& va
 
 template <>
 std::optional<u32> BamAuxGet(const bam1_t* record, const std::string& tag) {
+  auto* const tag_ptr = bam_aux_get(record, tag.c_str());
+  if (tag_ptr == nullptr) {
+    return std::nullopt;
+  }
+  return bam_aux2i(tag_ptr);
+}
+
+template <>
+std::optional<s64> BamAuxGet(const bam1_t* record, const std::string& tag) {
   auto* const tag_ptr = bam_aux_get(record, tag.c_str());
   if (tag_ptr == nullptr) {
     return std::nullopt;

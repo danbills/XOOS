@@ -1,0 +1,26 @@
+find_package(fmt REQUIRED)
+add_default_library(xoos_stats
+        xoos/stats/distributions.cpp
+        xoos/stats/external/asa243/asa243.cpp
+        xoos/stats/stats.cpp
+        xoos/stats/copy-number-stats.cpp
+)
+target_include_directories(xoos_stats
+        PRIVATE
+        .
+)
+target_include_directories(xoos_stats
+        SYSTEM
+        INTERFACE
+        .
+)
+target_link_libraries(xoos_stats
+        PRIVATE
+        fmt::fmt
+)
+target_link_xoos_libraries(xoos_stats
+        PUBLIC
+        types
+        PRIVATE
+        util
+)

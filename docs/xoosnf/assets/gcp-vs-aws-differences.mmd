@@ -1,0 +1,11 @@
+graph LR
+    subgraph AWS["AWS Batch"]
+        TF["Terraform provisions<br/>compute environments<br/>+ job queues"] --> CE["Fixed compute<br/>environments"]
+        CE --> Q["Job queues<br/>(one per instance type)"]
+        Q --> NF_AWS["Nextflow routes tasks<br/>to queues via closure"]
+    end
+
+    subgraph GCP["GCP Batch"]
+        API["Enable APIs +<br/>create service account"] --> NF_GCP["Nextflow requests<br/>exact VM specs per task"]
+        NF_GCP --> VM["GCP creates VM<br/>on demand"]
+    end

@@ -1,5 +1,6 @@
 #include "xoos/enum/enum-util.h"
 
+#include <locale>
 #include <regex>
 
 namespace xoos::enum_util {
@@ -22,7 +23,8 @@ static std::vector<std::string> SplitOnLetterChangeCase(const std::string& input
  * letters and where all characters are uppercase
  */
 static bool IsAcronym(const std::string_view& input) {
-  return input.size() > 1 && std::ranges::all_of(input.begin(), input.end(), [](char c) { return std::isupper(c); });
+  return input.size() > 1 &&
+         std::ranges::all_of(input, [](const char c) { return std::isupper(c, std::locale::classic()); });
 }
 
 /**
@@ -33,7 +35,7 @@ static std::string MakeWordLowerCaseIfNotAcronym(const std::string& input) {
     return input;
   }
   std::string lower_input{input};
-  lower_input[0] = static_cast<char>(std::tolower(input[0]));
+  lower_input[0] = std::tolower(input[0], std::locale::classic());
   return lower_input;
 }
 

@@ -24,7 +24,7 @@ constexpr u8 kRightShift2{2};
  * functionality are also declared in this header file.
  */
 
-// KZ2024 - to minimize memory usage, we'd like to limit the amount of memory used by this structure to 16 bits.
+// To minimize memory usage, we'd like to limit the amount of memory used by this structure to 16 bits.
 struct DuplexMatch {
   constexpr static u32 kUninitialized{3};
 
@@ -32,12 +32,41 @@ struct DuplexMatch {
 
   // Length encodings for the code match. They are defined such that the value of the enum can be used to determine
   // to update the LUT table if needed.
-  static const u16 kPlus2{0b000};  // longer matches are better, assign smallest value to longest match
-  static const u16 kPlus1{0b001};
-  static const u16 kZero{0b010};
-  static const u16 kMinus1{0b011};
-  static const u16 kMinus2{0b101};
-  static const u16 kNone{0b111};
+  // longer matches are better, assign smallest value to longest match
+  static constexpr u16 kPlus2{0b000};
+  static constexpr u16 kPlus1{0b001};
+  static constexpr u16 kZero{0b010};
+  static constexpr u16 kMinus1{0b011};
+  static constexpr u16 kMinus2{0b101};
+  static constexpr u16 kNone{0b111};
+
+  static constexpr auto kPos2{2};
+  static constexpr auto kPos1{1};
+  static constexpr auto kNeg1{-1};
+  static constexpr auto kNeg2{-2};
+
+  /**
+   * @brief Maps a signed base-count delta to the corresponding Length encoding.
+   *
+   * @param delta The difference between the observed and nominal barcode length (-2..+2).
+   * @return The encoded length value (kPlus2..kMinus2), or kZero for out-of-range deltas.
+   */
+  static constexpr u16 LengthFromDelta(const s32 delta) {
+    switch (delta) {
+      case kPos2:
+        return kPlus2;
+      case kPos1:
+        return kPlus1;
+      case 0:
+        return kZero;
+      case kNeg1:
+        return kMinus1;
+      case kNeg2:
+        return kMinus2;
+      default:
+        return kZero;
+    }
+  }
 
   bool operator<(const DuplexMatch& other) const {
     return edist < other.edist || (edist == other.edist && length < other.length);

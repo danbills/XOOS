@@ -1,5 +1,4 @@
-add_library(xoos_yc_decode
-        STATIC
+add_default_library(xoos_yc_decode
         xoos/yc-decode/yc-decoder.cpp
         xoos/yc-decode/cigar-utils.cpp
 )
@@ -17,10 +16,10 @@ target_link_libraries(xoos_yc_decode
 target_link_xoos_libraries(xoos_yc_decode
         PUBLIC
         error
+        io
         log
+        types
         PRIVATE
         enum
-        io
-        types
         util
 )

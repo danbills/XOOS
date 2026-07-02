@@ -1,13 +1,13 @@
 #include "trim5p-ys.h"
 
 #include <xoos/enum/enum-util.h>
+#include <xoos/types/int.h>
 
 #include <algorithm>
 #include <string_view>
 #include <utility>
 
 #include "sequence/matcher/bitap.h"
-#include "utility/string-util.h"
 
 namespace xoos::demux {
 
@@ -17,8 +17,8 @@ Trim5pYs::Trim5pYs(bool enable_partial, SeqMatcher runway_5p_matcher, SeqMatcher
       _runway_5p_matcher{std::move(runway_5p_matcher)},
       _sid_5p_matcher(std::move(sid_5p_matcher)),
       _sid_spacer_5p_matcher{std::move(sid_spacer_5p_matcher)},
-      // TODO: get from adapter bundle instead of hardcoding
-      _flank_5p_bitap("CAACAAGAGTCTTTT", false) {}
+      _flank_5p_sequence(_runway_5p_matcher.Pool().front().sequence + _sid_spacer_5p_matcher.Pool().front().sequence),
+      _flank_5p_bitap(_flank_5p_sequence, SearchDirection::kForward) {}
 
 /**
  * This is the main function that should be used to trim 5' adapters. It uses a 2-bit encoding (seq2) to allow
@@ -33,7 +33,7 @@ Trim5pYs::Trim5pYs(bool enable_partial, SeqMatcher runway_5p_matcher, SeqMatcher
  * @return Trim5pInfoYs structure containing trim information including SID match and insert start position
  */
 Trim5pInfoYs Trim5pYs::Trim(const u8* seq2, size_t length, const char* seq) const {
-  uint current_pos{0};
+  u32 current_pos{0};
 
   Trim5pInfoYs trim_info;
 
@@ -47,35 +47,17 @@ Trim5pInfoYs Trim5pYs::Trim(const u8* seq2, size_t length, const char* seq) cons
   }
 
   // Find the sid
-  std::optional<MatchInfo> sid_match;
-  {
-    auto sid_match0 = _sid_5p_matcher.FindBarcode(ReadEnd::k5p, current_pos, seq2, length);
-    if (AbortTrim(sid_match0)) {
-      return trim_info;
-    }
-
-    if (!sid_match0.IsUnknown()) {
-      current_pos = sid_match0.EPos();
-      sid_match = sid_match0;
-      trim_info.sid_match = sid_match;
-      trim_info.insert_start = current_pos;
-    }
+  auto sid_match0 = _sid_5p_matcher.FindBarcode(ReadEnd::k5p, current_pos, seq2, length);
+  if (AbortTrim(sid_match0)) {
+    return trim_info;
   }
 
-  {
-    // handle overhang
-    const std::string overhang_seq_5p{"GCGT"};
-    const int overhang_size = 4;
-    auto overhang_match = FindExactMatch5p(overhang_seq_5p.c_str(), overhang_size, 2, current_pos, seq, length);
-    if (overhang_match) {
-      current_pos = overhang_match->epos;
-      trim_info.insert_start = current_pos;
-    } else {
-      current_pos += std::min(static_cast<u32>(overhang_seq_5p.length()), static_cast<u32>(length) - current_pos);
-      trim_info.insert_start = current_pos;
-    }
+  if (!sid_match0.IsUnknown()) {
+    current_pos = sid_match0.EPos();
+    const std::optional sid_match = sid_match0;
+    trim_info.sid_match = sid_match;
+    trim_info.insert_start = current_pos;
   }
-
   return trim_info;
 }
 

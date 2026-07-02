@@ -69,4 +69,16 @@ std::shared_ptr<bam1_t> MakeBam1SharedPtr(bam1_t* ptr) {
   return std::shared_ptr<bam1_t>(ptr, Bam1Deleter{});
 }
 
+void BamPlpDeleter::operator()(bam_plp_t p) {
+  if (p != nullptr) {
+    bam_plp_destroy(p);
+  }
+}
+
+void BgzfDeleter::operator()(BGZF* f) {
+  if (f != nullptr) {
+    bgzf_close(f);
+  }
+}
+
 }  // namespace xoos::io

@@ -1,5 +1,6 @@
 #include "read-name-utils.h"
 
+#include <xoos/util/parse-int.h>
 #include <xoos/util/string-functions.h>
 
 namespace xoos::svc {
@@ -10,8 +11,8 @@ void ParseReadName(const std::string& read_name, u32& plus_counts, u32& minus_co
   // 3 is the number of reads supporting the variant on the minus strand
   // 4 is the total number of reads supporting the variant
   auto read_name_parts = string::Split(read_name, "-");
-  family_size = std::stoi(*(read_name_parts.end() - 1));
-  minus_counts = std::stoi(*(read_name_parts.end() - 2));
+  family_size = util::ParseU32(*(read_name_parts.end() - 1));
+  minus_counts = util::ParseU32(*(read_name_parts.end() - 2));
   plus_counts = family_size - minus_counts;
 }
 

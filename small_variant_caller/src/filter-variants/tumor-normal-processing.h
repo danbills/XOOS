@@ -30,21 +30,40 @@ class TumorNormalProcessing {
    * @param somatic_calculator A ScoreCalculator object for somatic variant scoring
    * @param normalize_target A DpTuple for feature normalization
    * @param header_info A VcfHeaderInfo object containing VCF header metadata
+   * @param shap_value_rows A vector to store SHAP value rows for output, if applicable
    */
   void ProcessRecord(const io::VcfRecordPtr& record,
                      vec<io::VcfRecordPtr>& out_records,
                      const ScoreCalculator& somatic_calculator,
                      const DepthTuple& normalize_target,
-                     const VcfHeaderInfo& header_info) const;
+                     const VcfHeaderInfo& header_info,
+                     vec<vec<std::string>>& shap_value_rows) const;
 
  private:
+  std::string_view CheckHardFilters(const TumorNormalBamFeatureTuple& bam_feat,
+                                    const VcfFeature& vcf_feat,
+                                    const DepthTuple& normalize_target) const;
+
+  std::pair<std::string_view, PredictionScore> ScoreVariantML(const VariantId& vid,
+                                                              const TumorNormalBamFeatureTuple& bam_feat,
+                                                              const VcfFeature& vcf_feat,
+                                                              const DepthTuple& normalize_target,
+                                                              const ScoreCalculator& calculator,
+                                                              vec<vec<std::string>>& shap_value_rows) const;
+
   u64 _prev_pos;
   VarIdToVcfFeatures _vcf_features;
   BamRegionFeatureCollection _bam_features;
   io::VcfHeaderPtr _hdr;
-  f32 _somatic_ml_snv_threshold;
-  f32 _somatic_ml_indel_threshold;
-  u32 _tumor_support_threshold;
+  f32 _snv_min_ml_score;
+  f32 _indel_min_ml_score;
+  u32 _min_tumor_support;
+  u32 _max_normal_support;
+  f32 _min_tumor_af;
+  f32 _min_dp_ratio;
+  u32 _max_indel_size;
+  bool _normalize_scoring_features;
   vec<FeatureColumn> _scoring_cols;
+  bool _is_duplex_protocol;
 };
 }  // namespace xoos::svc

@@ -12,8 +12,6 @@ namespace xoos::svc {
  * Consolidate all feature column names here to simplify future changes and to avoid spelling mistakes.
  */
 
-// TODO: review the usage of column names and consider renaming them for clarity
-
 // feature name prefixes for tumor and normal samples
 static const std::string kTumorPrefix = "tumor_";
 static const std::string kNormalPrefix = "normal_";
@@ -47,6 +45,9 @@ static const std::string kNameDistanceMeanLowbq = "distance_mean_lowbq";
 static const std::string kNameDistanceMeanSimplex = "distance_mean_simplex";
 static const std::string kNameDuplex = "duplex";
 static const std::string kNameDuplexLowbq = "duplex_lowbq";
+static const std::string kNameDuplexConcordant = "duplex_concordant";  // NOSONAR
+static const std::string kNameDuplexSimplex = "duplex_simplex";
+static const std::string kNameDuplexDiscordant = "duplex_discordant";  // NOSONAR
 static const std::string kNameDuplexAF = "duplex_af";
 static const std::string kNameDuplexDP = "duplex_dp";
 static const std::string kNameSimplex = "simplex";
@@ -90,6 +91,9 @@ static const std::string kNameRefDistanceMean = "ref_distance_mean";
 static const std::string kNameRefDistanceMeanLowbq = "ref_distance_mean_lowbq";
 static const std::string kNameRefDistanceMeanSimplex = "ref_distance_mean_simplex";
 static const std::string kNameRefDuplexLowbq = "ref_duplex_lowbq";
+static const std::string kNameRefDuplexConcordant = "ref_duplex_concordant";  // NOSONAR
+static const std::string kNameRefDuplexSimplex = "ref_duplex_simplex";        // NOSONAR
+static const std::string kNameRefDuplexDiscordant = "ref_duplex_discordant";  // NOSONAR
 static const std::string kNameRefSimplex = "ref_simplex";
 static const std::string kNameRefDuplexAF = "ref_duplex_af";
 static const std::string kNameRefFamilysizeSum = "ref_familysize_sum";
@@ -183,6 +187,7 @@ static const std::string kNameRpaRef = "rpa_ref";
 static const std::string kNameRpaAlt = "rpa_alt";
 static const std::string kNameStr = "str";
 static const std::string kNameAtInterest = "at_interest";
+static const std::string kNameGcContent = "gc_content";
 // tumor-normal specific VCF features
 static const std::string kNameTumorAltAD = "tumor_alt_ad";
 static const std::string kNameNormalAltAD = "normal_alt_ad";
@@ -204,7 +209,7 @@ static const std::string kNameFilterStatus = "filter_status";
 
 static const vec<std::string> kVariantIDFeatureNames{
     kNameChrom, kNamePos, kNameRef, kNameAlt, kNameAltLen, kNameSubtypeIndex, kNameVariantType};
-static const vec<std::string> kBamFeatureNames{kNameADT,
+static const vec<std::string> kBamFeatureNames{kNameADT,  // NOSONAR
                                                kNameADTL,
                                                kNameBaseqAF,
                                                kNameBaseqMin,
@@ -225,6 +230,9 @@ static const vec<std::string> kBamFeatureNames{kNameADT,
                                                kNameDistanceMeanSimplex,
                                                kNameDuplex,
                                                kNameDuplexLowbq,
+                                               kNameDuplexConcordant,
+                                               kNameDuplexSimplex,
+                                               kNameDuplexDiscordant,
                                                kNameSimplex,
                                                kNameDuplexDP,
                                                kNameDuplexAF,
@@ -367,6 +375,7 @@ static const vec<std::string> kVcfFeatureNames{kNameNalod,
                                                kNameRpaAlt,
                                                kNameStr,
                                                kNameAtInterest,
+                                               kNameGcContent,
                                                kNameADT,
                                                kNameADTL,
                                                kNameNumAlt,

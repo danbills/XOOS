@@ -5,9 +5,20 @@
 #include <xoos/error/error.h>
 #include <xoos/util/string-functions.h>
 
+#include "util/model-resolver.h"
 #include "variant-info.h"
 
 namespace xoos::svc {
+
+std::string AddTumorPrefix(const std::string& feature_name) {
+  return kTumorPrefix + feature_name;
+}
+
+std::string AddNormalPrefix(const std::string& feature_name) {
+  return kNormalPrefix + feature_name;
+}
+
+using Json = nlohmann::json;
 
 SnvIndelPaths GetSnvIndelPaths(const std::vector<fs::path>& paths) {
   SnvIndelPaths out_paths{};
@@ -44,12 +55,20 @@ SVCConfig::SVCConfig(const Workflow target_workflow) {
       ConfigureTumorOnlyTeWorkflow();
       break;
     }
+    case kTumorOnlyWgs: {
+      ConfigureTumorOnlyWgsWorkflow();
+      break;
+    }
     case kTumorNormalWgs: {
       ConfigureTumorNormalWgsWorkflow();
       break;
     }
     case kGermlineTagging: {
       ConfigureGermlineTaggingWorkflow();
+      break;
+    }
+    case kPanelOfNormals: {
+      ConfigurePanelOfNormalsWorkflow();
       break;
     }
     default: {
@@ -73,6 +92,7 @@ void SVCConfig::ConfigureCustomWorkflow() {
   filter_homopolymer = HomopolymerFilter::kAlignmentEnd;
   min_homopolymer_length = 4;
   sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kExclude;
   use_vcf_features = true;
 }
 
@@ -92,6 +112,7 @@ void SVCConfig::ConfigureGermlineWorkflow() {
   filter_homopolymer = HomopolymerFilter::kAlignmentEnd;
   min_homopolymer_length = 4;
   sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kInclude;
   use_vcf_features = true;
   snv_iterations = 1500;
   indel_iterations = 1500;
@@ -144,6 +165,7 @@ void SVCConfig::ConfigureTumorOnlyTeWorkflow() {
   filter_homopolymer = HomopolymerFilter::kNone;
   min_homopolymer_length = 7;
   sequencing_protocol = SequencingProtocol::kUmi;
+  duplex_lowbq = DuplexLowbqMode::kExclude;
   min_alt_counts = 3;
   // min AF for FFPE: 0.01, for ctDNA: 0.0
   min_af = 0.01F;
@@ -167,11 +189,32 @@ void SVCConfig::ConfigureTumorOnlyTeWorkflow() {
       "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true";
 }
 
+void SVCConfig::ConfigureTumorOnlyWgsWorkflow() {
+  bam_feature_names = kTumorOnlyWgsBamFeatures;
+  vcf_feature_names = kTumorOnlyWgsVcfFeatures;
+  workflow = Workflow::kTumorOnlyWgs;
+  n_classes = 1;
+  min_mapq = 1;
+  min_bq = kConcordantMinBaseQuality;
+  min_dist = 2;
+  min_family_size = kDuplexReadFamilySize;
+  filter_homopolymer = HomopolymerFilter::kNone;
+  min_homopolymer_length = 7;
+  sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kInclude;
+  use_vcf_features = true;
+  decode_yc = YcDecodeMethod::kNone;
+  min_base_type = BaseType::kConcordant;
+}
+
 void SVCConfig::ConfigureTumorNormalWgsWorkflow() {
-  // TODO : add scoring names, categorical names
-  // TODO : add value for `--max-variants-per-read`
   bam_feature_names = kTumorNormalWgsBamFeatures;
-  vcf_feature_names = kTumorNormalWgsVcfFeatures;
+  vcf_feature_names = {kNameChrom,       kNamePos,       kNameRef,          kNameAlt,           kNameTumorDP,
+                       kNameNormalDP,    kNameNalod,     kNameNlod,         kNameTlod,          kNameMpos,
+                       kNamePopAF,       kNameHapcomp,   kNameHapdom,       kNameStr,           kNameRu,
+                       kNameRpaRef,      kNameRpaAlt,    kNameSubtypeIndex, kNameVariantType,   kNameUniq3mers,
+                       kNameUniq4mers,   kNameUniq5mers, kNameUniq6mers,    kNamePre2BpContext, kNamePost2BpContext,
+                       kNameHomopolymer, kNameDirepeat,  kNameTrirepeat,    kNameQuadrepeat};
   workflow = Workflow::kTumorNormalWgs;
   scoring_names = kTumorNormalWgsScoringNames;
   categorical_names = kTumorNormalWgsCategoricalNames;
@@ -183,6 +226,7 @@ void SVCConfig::ConfigureTumorNormalWgsWorkflow() {
   filter_homopolymer = HomopolymerFilter::kNone;
   min_homopolymer_length = 7;
   sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kInclude;
   min_alt_counts = 3;
   min_phased_af = 0.001F;
   max_phased_af = 0.5F;
@@ -192,16 +236,25 @@ void SVCConfig::ConfigureTumorNormalWgsWorkflow() {
   hotspot_min_ml_score = 0.01F;
   phased = false;
   use_vcf_features = true;
-  iterations = 3000;
+  iterations = 6000;  // NOSONAR
   normalize_features = FeatureNormalization::kNone;
-  // TODO : Update thresholds with appropriate default values
   snv_min_ml_score = 0.03F;
   indel_min_ml_score = 0.008F;
   min_tumor_support = 1;
+  max_normal_support = 2;
+  min_tumor_af = 0.05F;
+  max_indel_size = 29;  // NOSONAR
+  min_dp_ratio = 0.15F;
   decode_yc = YcDecodeMethod::kNone;
   min_base_type = BaseType::kConcordant;
   model_lgbm_params = "objective=binary boosting=gbdt learning_rate=0.005 seed=1238845 num_classes=1";
   model_lgbm_prediction_params = "num_threads=1 force_row_wise=true deterministic=true seed=1238845";
+  model_thresholds = {
+      {TumorNormalModelThresholdsKey(SampleType::kFfpe, AlignerType::kBwa),
+       {.snv_min_ml_score = 0.533341F, .indel_min_ml_score = 0.0493952F}},
+      {TumorNormalModelThresholdsKey(SampleType::kCellLine, AlignerType::kBwa),
+       {.snv_min_ml_score = 0.501115F, .indel_min_ml_score = 0.3438547F}},
+  };
 }
 
 void SVCConfig::ConfigureGermlineTaggingWorkflow() {
@@ -218,6 +271,7 @@ void SVCConfig::ConfigureGermlineTaggingWorkflow() {
   filter_homopolymer = HomopolymerFilter::kNone;
   min_homopolymer_length = 7;
   sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kExclude;
   use_vcf_features = true;
   iterations = 1500;
   normalize_features = FeatureNormalization::kNone;
@@ -231,6 +285,23 @@ void SVCConfig::ConfigureGermlineTaggingWorkflow() {
       "bagging_freq=1 feature_fraction=0.5 num_leaves=64 is_unbalance=true num_classes=3 ";
   model_lgbm_prediction_params =
       "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true";
+}
+
+void SVCConfig::ConfigurePanelOfNormalsWorkflow() {
+  bam_feature_names = kPanelOfNormalsBamFeatures;
+  workflow = Workflow::kPanelOfNormals;
+  n_classes = 0;
+  min_mapq = 1;
+  min_bq = kConcordantMinBaseQuality;
+  min_dist = 2;
+  min_family_size = kDuplexReadFamilySize;
+  filter_homopolymer = HomopolymerFilter::kNone;
+  min_homopolymer_length = 7;
+  sequencing_protocol = SequencingProtocol::kDuplex;
+  duplex_lowbq = DuplexLowbqMode::kInclude;
+  use_vcf_features = false;
+  decode_yc = YcDecodeMethod::kNone;
+  min_base_type = BaseType::kConcordant;
 }
 
 bool SVCConfig::HasVcfFeatureScoringCols() const {

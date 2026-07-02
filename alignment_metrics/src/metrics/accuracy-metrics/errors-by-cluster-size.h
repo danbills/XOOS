@@ -53,7 +53,7 @@ struct ErrorsByClusterSize {
   std::vector<ErrorByClusterSize> errors_by_cluster_size{};
 
   static std::vector<std::string> GetHeaders();
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   ErrorsByClusterSize& operator+=(const ErrorsByClusterSize& other);
   ErrorsByClusterSize& operator+=(

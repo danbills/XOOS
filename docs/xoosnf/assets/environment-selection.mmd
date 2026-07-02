@@ -1,0 +1,7 @@
+flowchart LR
+    ENV["--env name_or_path"] --> Resolve["Resolve JSON"]
+    Resolve --> Dispatch{"executor field?"}
+    Dispatch -->|local| Local["Local executor<br/>Run Nextflow directly"]
+    Dispatch -->|slurm| Slurm["Slurm executor<br/>sbatch driver script"]
+    Dispatch -->|aws_batch| AWS["AWS Batch executor<br/>Containerized driver job"]
+    Dispatch -->|gcp_batch| GCP["GCP Batch executor<br/>Containerized driver job"]

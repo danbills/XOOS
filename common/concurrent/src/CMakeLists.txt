@@ -1,5 +1,4 @@
-add_library(xoos_concurrent
-        STATIC
+add_default_library(xoos_concurrent
         xoos/concurrent/enumerable-thread-local.h
         xoos/concurrent/enumerable-thread-local.cpp
 )

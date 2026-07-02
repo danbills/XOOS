@@ -1,18 +1,28 @@
 #include "clustering/cluster-downsample.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <random>
+
+#include <xoos/util/hash.h>
+
+#include "clustering/clustering.h"
 
 namespace xoos::read_collapser {
 
-void DownsampleReadsInCluster(vec<AlignmentPtr>& reads, const u32 max_reads) {
+void DownsampleReadsInCluster(vec<AlignmentPtr>& reads, const u32 max_reads, const ClusterId& cluster_id) {
   // Partition reads into forward and reverse; and within those, into full and partial reads.
   if (reads.size() <= max_reads) {
     // If the number of reads is less than or equal to max_reads, return them as
     // no subsampling is needed.
     return;
   }
-  // NOLINTNEXTLINE (cert-msc51-cpp)
-  std::mt19937 random_generator(0);  // use constant seed to preserve determinacy for testing
+  // Seed with a hash of the cluster ID so each cluster gets a unique but deterministic permutation.
+  const auto hash = util::hash::Hash(cluster_id.super_region_id, cluster_id.count);
+  const auto lo = static_cast<std::uint32_t>(hash);
+  const auto hi = static_cast<std::uint32_t>(hash >> 32U);
+  std::seed_seq seed{lo, hi};
+  std::mt19937 random_generator(seed);
   // Shuffle the reads to ensure randomness in subsampling.
   std::shuffle(reads.begin(), reads.end(), random_generator);
   // Partition reads into full and partial reads, and then into forward and reverse reads.

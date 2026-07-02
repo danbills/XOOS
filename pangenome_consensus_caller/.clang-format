@@ -74,5 +74,5 @@ InsertBraces: true
 InsertNewlineAtEOF: true
 MaxEmptyLinesToKeep: 1
 QualifierAlignment: Custom
-QualifierOrder: [inline, static, friend, const, constexpr, volatile, restrict, type]
-SeparateDefinitionBlocks : Always
+QualifierOrder: [static, inline, friend, const, constexpr, volatile, restrict, type]
+SeparateDefinitionBlocks: Always

@@ -1,64 +1,77 @@
-# syntax=docker/dockerfile:1
-ARG CMAKE_BUILD_TYPE=Release
+ARG build_type=Release
 
-FROM ubuntu:24.04 AS build_env_stage
+FROM ubuntu:24.04 AS builder-base
 
-ENV VENV=/opt/venv
+ENV PATH=/ci/bin:/ci/sccache:/ci/.venv/bin:${PATH}
 
-COPY --from=common scripts/install-system-dependencies.sh /common/scripts/install-system-dependencies.sh
+COPY --from=common /ci/ci-build-env-base.sh /ci/bin/
 
-RUN python_venv_dir=${VENV} /common/scripts/install-system-dependencies.sh
+ARG SCCACHE_ENABLE=false
+RUN --mount=type=cache,target=/root/.cache/pip \
+  --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  sccache_enable=${SCCACHE_ENABLE} python_venv_dir=/ci/.venv ci-build-env-base.sh
 
-ENV PATH=${VENV}/bin:${PATH}
-ENV CONAN_HOME=/conan/.conan2
+COPY --from=common /ci/ci-build-env-conan.sh /ci/bin/
+COPY --from=vendor . /ci/vendor
+COPY --from=common . /ci/common
 
-COPY --from=vendor . /conan/vendor
-COPY --from=common scripts/conan-project-setup.sh /common/scripts/conan-project-setup.sh
-COPY conanfile.txt /conan/conanfile.txt
+WORKDIR /ci/app
+COPY conanfile.txt .
+COPY CMakeLists.txt .
 
-ARG CMAKE_BUILD_TYPE
-ARG CONAN_REMOTE_URL
-ARG CONAN_BUILD_DEPENDENCIES=missing
-ARG CONAN_INCLUDE_VENDOR=True
-ARG CONAN_USE_CONANCENTER=True
-ARG CONAN_UPLOAD_PACKAGE_PATTERN
-RUN --mount=type=secret,id=CONAN_LOGIN_USERNAME \
-    --mount=type=secret,id=CONAN_PASSWORD \
-    custom_remote_url="${CONAN_REMOTE_URL}" \
-    build_type="${CMAKE_BUILD_TYPE}" \
-    build_dependencies="${CONAN_BUILD_DEPENDENCIES}" \
-    include_vendor="${CONAN_INCLUDE_VENDOR}" \
-    use_conancenter="${CONAN_USE_CONANCENTER}" \
-    upload_package_pattern="${CONAN_UPLOAD_PACKAGE_PATTERN}" \
-    /common/scripts/conan-project-setup.sh
+ARG SCCACHE_BUCKET SCCACHE_REGION
+ARG BUILD_DEPENDENCIES=missing CONANCENTER_ENABLED=true CUSTOM_REMOTE_URL CUSTOM_REMOTE_UPLOAD_PATTERN
+RUN --mount=type=secret,id=AWS_ACCESS_KEY_ID \
+  --mount=type=secret,id=AWS_SECRET_ACCESS_KEY \
+  --mount=type=secret,id=AWS_SESSION_TOKEN \
+  --mount=type=secret,id=CUSTOM_REMOTE_USERNAME \
+  --mount=type=secret,id=CUSTOM_REMOTE_PASSWORD \
+  SCCACHE_BUCKET="${SCCACHE_BUCKET}" \
+  SCCACHE_REGION="${SCCACHE_REGION}" \
+  AWS_ACCESS_KEY_ID="$([ -f /run/secrets/AWS_ACCESS_KEY_ID ] && cat /run/secrets/AWS_ACCESS_KEY_ID)" \
+  AWS_SECRET_ACCESS_KEY="$([ -f /run/secrets/AWS_SECRET_ACCESS_KEY ] && cat /run/secrets/AWS_SECRET_ACCESS_KEY)" \
+  AWS_SESSION_TOKEN="$([ -f /run/secrets/AWS_SESSION_TOKEN ] && cat /run/secrets/AWS_SESSION_TOKEN)" \
+  root_dir=/ci \
+  build_dependencies="${BUILD_DEPENDENCIES}" \
+  custom_remote_url="${CUSTOM_REMOTE_URL}" \
+  custom_remote_username="$([ -f /run/secrets/CUSTOM_REMOTE_USERNAME ] && cat /run/secrets/CUSTOM_REMOTE_USERNAME)" \
+  custom_remote_password="$([ -f /run/secrets/CUSTOM_REMOTE_PASSWORD ] && cat /run/secrets/CUSTOM_REMOTE_PASSWORD)" \
+  custom_remote_upload_pattern="${CUSTOM_REMOTE_UPLOAD_PATTERN}" \
+  conancenter_enabled="${CONANCENTER_ENABLED}" \
+  ci-build-env-conan.sh
 
-FROM build_env_stage AS build_bin_stage
+FROM builder-base AS builder-app
+ARG SCCACHE_BUCKET SCCACHE_REGION
 
-COPY --from=common . /common
-COPY . /alignment_metrics
+COPY --from=common /ci/ci-app.sh /ci/bin/
+COPY . /ci/app/
 
-ARG BUILD_TESTING=OFF
-ARG CODE_COVERAGE_ENABLE=OFF
-ARG CMAKE_BUILD_TYPE
-ARG VERSION=unknown
+ARG BUILD_TESTING=OFF CODE_COVERAGE_ENABLE=OFF build_type VERSION=unknown
+RUN --mount=type=secret,id=AWS_ACCESS_KEY_ID \
+  --mount=type=secret,id=AWS_SECRET_ACCESS_KEY \
+  --mount=type=secret,id=AWS_SESSION_TOKEN \
+  SCCACHE_BUCKET="${SCCACHE_BUCKET}" \
+  SCCACHE_REGION="${SCCACHE_REGION}" \
+  AWS_ACCESS_KEY_ID="$([ -f /run/secrets/AWS_ACCESS_KEY_ID ] && cat /run/secrets/AWS_ACCESS_KEY_ID)" \
+  AWS_SECRET_ACCESS_KEY="$([ -f /run/secrets/AWS_SECRET_ACCESS_KEY ] && cat /run/secrets/AWS_SECRET_ACCESS_KEY)" \
+  AWS_SESSION_TOKEN="$([ -f /run/secrets/AWS_SESSION_TOKEN ] && cat /run/secrets/AWS_SESSION_TOKEN)" \
+  build_testing=${BUILD_TESTING} \
+  code_coverage_enable=${CODE_COVERAGE_ENABLE} \
+  build_type=${build_type} \
+  version=${VERSION} \
+  ci-app.sh
+
 ARG LINT_ENABLE=ON
+COPY --from=common /ci/ci-clangd-tidy.sh /ci/bin/
+RUN build_testing=${BUILD_TESTING} lint_enable=${LINT_ENABLE} ci-clangd-tidy.sh
 
-RUN module_dir=/alignment_metrics \
-    build_testing=${BUILD_TESTING} \
-    code_coverage_enable=${CODE_COVERAGE_ENABLE} \
-    cmake_build_type="${CMAKE_BUILD_TYPE}" \
-    version="${VERSION}" \
-    /common/scripts/cmake-build.sh
+FROM debian:13.4-slim
 
-RUN cd /alignment_metrics \
-  && build_testing=${BUILD_TESTING} lint_enable=${LINT_ENABLE} /common/scripts/run-clangd-tidy.sh
+RUN apt-get -qq update && apt-get -qq upgrade -y && apt-get -qq install --no-install-recommends -y procps && rm -rf /var/lib/apt/lists/*
 
-FROM ubuntu:24.04
+ENV PATH="/apps:${PATH}"
 
-RUN apt-get -qq update && apt-get -qq upgrade && rm -rf /var/lib/apt/lists/*
-
-ENV PATH=/apps:${PATH}
-
-COPY --from=build_bin_stage /alignment_metrics/build/apps/alignment_metrics /apps/alignment_metrics
-
+ARG build_type
+COPY --from=builder-app /ci/build/apps/${build_type}/alignment_metrics /apps/
 COPY LICENSE.md /LICENSE.md

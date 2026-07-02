@@ -100,7 +100,7 @@ struct HpStats {
   void IncrementHpCount(const HpStatKey& key);
 
   // Writes to the given tsv file
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   friend HpStats operator+(const HpStats& lhs, const HpStats& rhs);
 

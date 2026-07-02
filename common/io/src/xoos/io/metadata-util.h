@@ -1,50 +1,56 @@
 #pragma once
 #include <optional>
 #include <string>
-#include <vector>
-
-#include <csv.hpp>
 
 namespace xoos::io {
-using Comments = std::vector<std::string>;
-
-void AddComment(Comments& comments,
-                const std::string& comment);  // now comments has {"a", "b", "c", "x=y"}
-
-void AddCommentKeyPair(Comments& comments,
-                       const std::string& key,
-                       const std::string& value);  // now comments has {"a", "b", "c", "x=y"}
-
-void AddVersionAndCommandLineComment(Comments& comments, const std::string& version, const std::string& command_line);
 
 const std::string kTsvCommentLinePrefix = "#";
 const std::string kVcfCommentLinePrefix = "##";
+const std::string kRocheCommandLinePrefix = "##RocheCommandLine=<";
+const std::string kKeyId = "ID";
+const std::string kKeyVersion = "Version";
+const std::string kKeyCommandLine = "CommandLine";
 
 /**
- * @brief Write comments to a TSV writer, prefixing each comment with a comment character.
- * @tparam TSVWriter The type of the TSV writer, which must support the '<<' operator for writing rows.
- * @param writer The TSV writer to which comments will be written.
- * @param comments A vector of comment strings to be written.
+ * @brief Holds program name, version, and full command line for metadata output.
  */
-template <typename TSVWriter>
-void WriteTsvComments(TSVWriter& writer, const Comments& comments) {
-  for (const auto& comment : comments) {
-    writer << std::vector{kTsvCommentLinePrefix + comment};
-  }
+struct CommandLineInfo {
+  std::string name;
+  std::string version;
+  std::string command_line;
+};
+
+/**
+ * @brief Format a CommandLineInfo as a RocheCommandLine metadata line.
+ *
+ * Produces: ##RocheCommandLine=<ID=name,Version="version",CommandLine="command_line">
+ *
+ * Used for both VCF and TSV output.
+ */
+std::string GetCommandInfo(const CommandLineInfo& info);
+
+/**
+ * @brief Parse a RocheCommandLine metadata line back into a CommandLineInfo struct.
+ *
+ * Expected format:
+ *   ##RocheCommandLine=<ID=name,Version="version",CommandLine="command_line">
+ *
+ * Key-value pairs inside the angle brackets are parsed in any order.
+ * Handles escaped quotes and backslashes in quoted values (inverse of EscapeMetadataValue).
+ * Returns std::nullopt silently if the line is not a RocheCommandLine line, or with a
+ * warning log if the line starts with ##RocheCommandLine= but is malformed.
+ */
+std::optional<CommandLineInfo> ParseCommandInfo(const std::string& line);
+
+/**
+ * @brief Write a RocheCommandLine metadata comment to an output stream.
+ *
+ * Writes a single ##RocheCommandLine=<...> comment line directly to the stream
+ * to avoid CSV quoting of special characters (commas, double-quotes).
+ */
+template <typename OutputStream>
+void WriteTsvMetadata(OutputStream& stream, const CommandLineInfo& info) {
+  stream << GetCommandInfo(info) << "\n";
 }
-
-/**
- * @brief Generate a string representation for the version key from comments.
- */
-std::optional<std::string> GetVersion(const Comments& comments);
-
-/**
- * @brief Generate a string representation for the command line key from comments.
- */
-std::optional<std::string> GetCommandLine(const Comments& comments);
-
-// helper functions to extract version and command line from comments
-std::optional<std::string> GetVcfVersion(const Comments& comments);
-std::optional<std::string> GetVcfCommandLine(const Comments& comments);
 
 }  // namespace xoos::io

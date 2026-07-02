@@ -2,7 +2,6 @@
 
 #include <numeric>
 #include <regex>
-#include <utility>
 
 #include <htslib/vcf.h>
 
@@ -436,7 +435,8 @@ template <>
 std::vector<bool> VcfRecord::GetInfoField(const std::string& field) const {
   ConfirmInfoFieldInHeader(field);
   s32 num_entries = 0;
-  MallocPtr<char> buffer = nullptr;  // this will be unused for retrieving bool
+  // this will be unused for retrieving bool
+  MallocPtr<char> buffer = nullptr;
   // from htslib documentation:
   // Returns negative value on error or the number of values (including missing
   // values) put in *dst on success.
@@ -453,7 +453,6 @@ std::vector<bool> VcfRecord::GetInfoField(const std::string& field) const {
  * @param field Field name
  * @param values Vector of float values
  */
-template <>
 void VcfRecord::SetInfoField(const std::string& field, const std::vector<f32>& values) {
   ConfirmInfoFieldInHeader(field);
   if (bcf_update_info_float(_hdr.get(), _record.get(), field.c_str(), &values[0], values.size()) < 0) {
@@ -466,7 +465,6 @@ void VcfRecord::SetInfoField(const std::string& field, const std::vector<f32>& v
  * @param field Field name
  * @param values Vector of int values
  */
-template <>
 void VcfRecord::SetInfoField(const std::string& field, const std::vector<s32>& values) {
   ConfirmInfoFieldInHeader(field);
   if (bcf_update_info_int32(_hdr.get(), _record.get(), field.c_str(), &values[0], values.size()) < 0) {
@@ -479,7 +477,6 @@ void VcfRecord::SetInfoField(const std::string& field, const std::vector<s32>& v
  * @param field Field name
  * @param values Vector of string values
  */
-template <>
 void VcfRecord::SetInfoField(const std::string& field, const std::vector<std::string>& values) {
   ConfirmInfoFieldInHeader(field);
   const auto value = std::accumulate(values.begin(), values.end(), std::string{});
@@ -583,7 +580,6 @@ std::vector<std::string> VcfRecord::GetFormatField(const std::string& field) con
  * @param field Field name
  * @param values Vector of float values
  */
-template <>
 void VcfRecord::SetFormatField(const std::string& field, const std::vector<f32>& values) {
   ConfirmFormatFieldInHeader(field);
   if (bcf_update_format_float(_hdr.get(), _record.get(), field.c_str(), &values[0], values.size()) < 0) {
@@ -596,7 +592,6 @@ void VcfRecord::SetFormatField(const std::string& field, const std::vector<f32>&
  * @param field Field name
  * @param values Vector of int values
  */
-template <>
 void VcfRecord::SetFormatField(const std::string& field, const std::vector<s32>& values) {
   ConfirmFormatFieldInHeader(field);
   if (bcf_update_format_int32(_hdr.get(), _record.get(), field.c_str(), &values[0], values.size()) < 0) {
@@ -610,7 +605,6 @@ void VcfRecord::SetFormatField(const std::string& field, const std::vector<s32>&
  * @param values Vector of C-string values
  * @note If the field is GT, it will be set using SetGTField instead.
  */
-template <>
 void VcfRecord::SetFormatField(const std::string& field, const std::vector<const char*>& values) {
   ConfirmFormatFieldInHeader(field);
 
@@ -631,7 +625,6 @@ void VcfRecord::SetFormatField(const std::string& field, const std::vector<const
  * @param values Vector of string values
  * @note If the field is GT, it will be set using SetGTField instead.
  */
-template <>
 void VcfRecord::SetFormatField(const std::string& field, const std::vector<std::string>& values) {
   ConfirmFormatFieldInHeader(field);
 
@@ -658,18 +651,15 @@ void VcfRecord::SetFormatField(const std::string& field, const std::vector<std::
  */
 void VcfRecord::SetGTField(const std::string& value, const s32 sample_index) {
   static const std::regex kPattern(kGenotypeRegex);
-  std::smatch match;
-  // genotype regex match indexes for 1st allele, separator, and 2nd allele
-  // e.g. for "0/1", match[1] = "0", match[3] = "/", match[4] = "1"
-  static constexpr size_t kGenotypeRegexAlleleOneMatchIndex = 1;
-  static constexpr size_t kGenotypeRegexSeparatorMatchIndex = 3;
-  static constexpr size_t kGenotypeRegexAlleleTwoMatchIndex = 4;
-  if (!std::regex_search(value, match, kPattern)) {
+  if (!std::regex_match(value, kPattern)) {
     throw error::Error("Invalid genotype field value: {}", value);
   }
-  const bool is_phased = match[kGenotypeRegexSeparatorMatchIndex].str() == "|";
 
-  // lambda function to parse allele string and return the corresponding integer value
+  // Detect separator: phased (|) or unphased (/)
+  const bool is_phased = value.find(kPhasedAlleleSeparator) != std::string::npos;
+  const char sep = is_phased ? kPhasedAlleleSeparator : kUnphasedAlleleSeparator;
+
+  // Tokenise on the separator and convert each token to an htslib GT integer
   auto parse_allele = [&is_phased](const std::string& allele_str) {
     if (allele_str == ".") {
       return bcf_gt_missing;
@@ -678,49 +668,68 @@ void VcfRecord::SetGTField(const std::string& value, const s32 sample_index) {
     return is_phased ? bcf_gt_phased(allele) : bcf_gt_unphased(allele);
   };
 
+  // Walk the GT string, splitting on the detected separator to build the allele integer vector.
   std::vector<s32> alleles;
-  alleles.push_back(parse_allele(match[kGenotypeRegexAlleleOneMatchIndex].str()));
-  if (match[kGenotypeRegexSeparatorMatchIndex].matched) {
-    alleles.push_back(parse_allele(match[kGenotypeRegexAlleleTwoMatchIndex].str()));
+  std::string token;
+  for (const char ch : value) {
+    if (ch == sep) {
+      alleles.push_back(parse_allele(token));
+      token.clear();
+    } else {
+      token += ch;
+    }
   }
-  const auto num_alleles = alleles.size();
+  alleles.push_back(parse_allele(token));
+  const auto new_ploidy = alleles.size();
 
   const s32 num_samples = bcf_hdr_nsamples(_hdr.get());
   if (sample_index < 0 || sample_index >= num_samples) {
     throw error::Error("Sample index out of range: {}", sample_index);
   }
-  const auto sample_idx_u = static_cast<size_t>(sample_index);
   const auto num_samples_u = static_cast<size_t>(num_samples);
+  const auto sample_idx_u = static_cast<size_t>(sample_index);
 
-  MallocPtr<s32> genotypes = nullptr;
-  s32 num_gts = 0;
-  size_t ploidy = num_alleles;
-  // if the record has existing genotypes and multiple samples, preserve its ploidy and genotypes of other samples
-  // if not, we will create a new genotype array and set the genotypes of other samples to missing
-  const bool has_gts = num_samples_u > 1 && bcf_get_genotypes(_hdr.get(), _record.get(), &genotypes, &num_gts) > 0;
-  if (has_gts && num_gts > 0) {
-    ploidy = static_cast<size_t>(num_gts) / num_samples_u;
-    if (num_alleles > ploidy) {
-      throw error::Error("Number of alleles in genotype exceeds ploidy: {} > {}", num_alleles, ploidy);
+  // Read the existing GT buffer (needed to preserve other samples' genotypes).
+  MallocPtr<s32> existing_gts = nullptr;
+  s32 existing_num_gts = 0;
+  const bool has_existing =
+      bcf_get_genotypes(_hdr.get(), _record.get(), &existing_gts, &existing_num_gts) > 0 && existing_num_gts > 0;
+
+  // Use the larger of the existing ploidy and the new ploidy as the buffer ploidy. This avoids
+  // silently truncating other samples' genotype data when the new GT has fewer alleles.
+  const size_t existing_ploidy = has_existing ? static_cast<size_t>(existing_num_gts) / num_samples_u : new_ploidy;
+  const size_t buf_ploidy = std::max(existing_ploidy, new_ploidy);
+  const size_t total_gts = num_samples_u * buf_ploidy;
+
+  // Initialize all positions to vector_end so padding slots beyond each sample's true ploidy
+  // are handled correctly by htslib (they serialize as absent rather than as missing alleles).
+  auto genotypes = MallocPtr<s32>(static_cast<s32*>(malloc(total_gts * sizeof(s32))));
+  std::fill_n(genotypes.get(), total_gts, bcf_int32_vector_end);
+
+  // Copy existing genotypes for all samples except the target, preserving their full allele vectors.
+  if (has_existing) {
+    for (size_t s = 0; s < num_samples_u; ++s) {
+      if (s == sample_idx_u) {
+        continue;
+      }
+      for (size_t a = 0; a < existing_ploidy; ++a) {
+        genotypes.get()[s * buf_ploidy + a] = existing_gts.get()[s * existing_ploidy + a];
+      }
+      // Positions [existing_ploidy, buf_ploidy) remain bcf_int32_vector_end.
     }
-  } else {
-    const auto num_gts_u = num_samples_u * ploidy;
-    genotypes = MallocPtr<s32>(static_cast<s32*>(malloc(num_gts_u * sizeof(s32))));
-    std::fill_n(genotypes.get(), num_gts_u, bcf_gt_missing);
-    num_gts = static_cast<s32>(num_gts_u);
   }
 
-  // set the alleles for the specified sample
-  for (size_t i = 0; i < num_alleles && std::cmp_less(sample_idx_u * ploidy + i, num_gts); ++i) {
-    genotypes.get()[sample_idx_u * ploidy + i] = alleles[i];
+  // Write the target sample's new alleles.
+  for (size_t i = 0; i < new_ploidy; ++i) {
+    genotypes.get()[sample_idx_u * buf_ploidy + i] = alleles[i];
   }
-  // if the new genotype has fewer alleles than the ploidy, set the remaining alleles to missing
-  // this can happen when we set a haploid genotype to a diploid record
-  for (size_t i = num_alleles; i < ploidy && std::cmp_less(sample_idx_u * ploidy + i, num_gts); ++i) {
-    genotypes.get()[sample_idx_u * ploidy + i] = bcf_gt_missing;
+  // Place a vector_end sentinel after the last allele when the new ploidy is shorter than the
+  // buffer ploidy, so htslib serializes this sample as e.g. "0/1" instead of "0/1/.".
+  if (new_ploidy < buf_ploidy) {
+    genotypes.get()[sample_idx_u * buf_ploidy + new_ploidy] = bcf_int32_vector_end;
   }
 
-  if (bcf_update_genotypes(_hdr.get(), _record.get(), genotypes.get(), num_gts) < 0) {
+  if (bcf_update_genotypes(_hdr.get(), _record.get(), genotypes.get(), static_cast<s32>(total_gts)) < 0) {
     throw error::Error("Failed to update FORMAT field GT");
   }
 }
@@ -740,38 +749,57 @@ void VcfRecord::SetGTField(const std::string& value) {
  * @throws std::runtime_error if the GT field cannot be retrieved
  */
 std::string VcfRecord::GetGTField() const {
+  return GetGTField(0);
+}
+
+/**
+ * @brief Get the genotype field (GT) for a specific sample.
+ * @param sample_index Sample index (0-based)
+ * @return Genotype string, e.g. "0/1" or "1|0"
+ * @throws std::runtime_error if the GT field cannot be retrieved or sample_index is out of range
+ */
+std::string VcfRecord::GetGTField(const s32 sample_index) const {
+  const s32 num_samples = bcf_hdr_nsamples(_hdr.get());
+  if (sample_index < 0 || sample_index >= num_samples) {
+    throw error::Error("Sample index out of range: {}", sample_index);
+  }
+
   s32 num_entries = 0;
   MallocPtr<s32> buffer = nullptr;
   if (bcf_get_genotypes(_hdr.get(), _record.get(), &buffer, &num_entries) < 0) {
     throw error::Error("Failed to get FORMAT field GT");
   }
 
-  std::string value;
-  if (bcf_gt_is_missing(buffer.get()[0])) {
-    value = ".";
-  } else {
-    value = std::to_string(bcf_gt_allele(buffer.get()[0]));
-  }
+  const auto ploidy = static_cast<size_t>(num_entries / num_samples);
+  const auto offset = static_cast<size_t>(sample_index) * ploidy;
 
-  if (num_entries > 1) {
-    if (bcf_gt_is_missing(buffer.get()[1])) {
-      value += "/.";
-    } else if (bcf_gt_is_phased(buffer.get()[1])) {
-      value += "|" + std::to_string(bcf_gt_allele(buffer.get()[1]));
+  // Copy the raw GT integers into a vector to enable bounds-checked access via .at().
+  const auto gts = std::vector<s32>(buffer.get(), buffer.get() + static_cast<size_t>(num_entries));
+
+  std::string value;
+  for (size_t i = 0; i < ploidy; ++i) {
+    if (gts.at(offset + i) == bcf_int32_vector_end) {
+      break;
+    }
+    if (i > 0) {
+      value += bcf_gt_is_phased(gts.at(offset + i)) ? kPhasedAlleleSeparator : kUnphasedAlleleSeparator;
+    }
+    if (bcf_gt_is_missing(gts.at(offset + i))) {
+      value += kMissingAllele;
     } else {
-      value += "/" + std::to_string(bcf_gt_allele(buffer.get()[1]));
+      value += std::to_string(bcf_gt_allele(gts.at(offset + i)));
     }
   }
   return value;
 }
 
 /**
- * @brief Set the exact filter field in the record.
+ * @brief Get the genotype field (GT) for a specific sample.
  * @param filter Filter name
  * @throws std::runtime_error if the filter is not found in the header or if updating fails
  */
-void VcfRecord::SetFilter(const std::string& filter) {
-  s32 index = bcf_hdr_id2int(_hdr.get(), BCF_DT_ID, filter.c_str());
+void VcfRecord::SetFilter(const char* filter) {
+  s32 index = bcf_hdr_id2int(_hdr.get(), BCF_DT_ID, filter);
   if (index < 0) {
     throw error::Error("FILTER {} not found in header", filter);
   }
@@ -781,18 +809,56 @@ void VcfRecord::SetFilter(const std::string& filter) {
 }
 
 /**
+ * @brief Set the filter for the record.
+ * @param filter Filter name
+ * @throws std::runtime_error if the filter is not found in the header or if updating fails
+ */
+void VcfRecord::SetFilter(const std::string& filter) {
+  SetFilter(filter.c_str());
+}
+
+/**
+ * @brief Set the filter for the record.
+ * @param filter Filter name
+ * @throws std::runtime_error if the filter is not found in the header or if updating fails
+ */
+void VcfRecord::SetFilter(const std::string_view filter) {
+  const std::string filter_str(filter);
+  SetFilter(filter_str.c_str());
+}
+
+/**
  * @brief Add a filter to the record.
  * @param filter Filter name
  * @throws std::runtime_error if the filter is not found in the header or if adding fails
  */
-void VcfRecord::AddFilter(const std::string& filter) {
-  const s32 index = bcf_hdr_id2int(_hdr.get(), BCF_DT_ID, filter.c_str());
+void VcfRecord::AddFilter(const char* filter) {
+  const s32 index = bcf_hdr_id2int(_hdr.get(), BCF_DT_ID, filter);
   if (index < 0) {
     throw error::Error("FILTER {} not found in header", filter);
   }
   if (bcf_add_filter(_hdr.get(), _record.get(), index) < 0) {
     throw error::Error("Failed to add FILTER {}", filter);
   }
+}
+
+/**
+ * @brief Add a filter to the record.
+ * @param filter Filter name
+ * @throws std::runtime_error if the filter is not found in the header or if adding fails
+ */
+void VcfRecord::AddFilter(const std::string& filter) {
+  AddFilter(filter.c_str());
+}
+
+/**
+ * @brief Add a filter to the record.
+ * @param filter Filter name
+ * @throws std::runtime_error if the filter is not found in the header or if adding fails
+ */
+void VcfRecord::AddFilter(const std::string_view filter) {
+  const std::string filter_str(filter);
+  AddFilter(filter_str.c_str());
 }
 
 /**

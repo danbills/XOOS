@@ -100,7 +100,9 @@ vec<std::string> BoosterGetFeatureNames(BoosterHandle handle, size_t max_feature
   s32 out_len;
   size_t out_buffer_len;
   BoosterGetFeatureNames(handle, num_features, &out_len, max_feature_name_len, &out_buffer_len, c_strings.data());
-  assert(out_len == num_features);
+  if (out_len != num_features) {
+    throw error::Error("Feature name count mismatch: expected {}, got {}", num_features, out_len);
+  }
 
   vec<std::string> result;
   result.reserve(out_len);

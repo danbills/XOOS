@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -26,32 +27,32 @@ constexpr TwoBit32mer kTwoBitG{0b10};
 constexpr TwoBit32mer kTwoBitT{0b11};
 
 /**
- * @brief Check if a nucleotide is A, C, T, or G.
+ * @brief Check if a nucleotide is A, C, T, G or their lower case.
  * @param base nucleotide character
- * @return true if the base is A, C, T, or G; false otherwise
+ * @return true if the check passes; false otherwise
  */
 bool IsACTG(char base);
 
 /**
- * @brief Check if a nucleotide is not A, C, T, or G.
+ * @brief Check if a nucleotide is not A, C, T, G nor their lower case.
  * @param base nucleotide character
- * @return true if the base is not A, C, T, or G; false otherwise
+ * @return true if the check passes; false otherwise
  */
 bool IsNotACTG(char base);
 
 /**
- * @brief Check if a nucleotide sequence contains any character that is not A, C, T, or G.
+ * @brief Check if a nucleotide sequence contains any character that is not A, C, T, G, nor their lower case.
  * @param seq nucleotide sequence
- * @return true if the sequence contains any character that is not A, C, T, or G; false otherwise
+ * @return true if the check passes; false otherwise
  */
-bool IsAnyNotACTG(const std::string& seq);
+bool IsAnyNotACTG(std::string_view seq);
 
 /**
- * @brief Check if a nucleotide sequence contains only A, C, T, or G characters.
+ * @brief Check if a nucleotide sequence contains only A, C, T, G, or their lower case.
  * @param seq nucleotide sequence
- * @return true if the sequence contains only A, C, T, or G characters; false otherwise
+ * @return true if the check passes; false otherwise
  */
-bool ContainsOnlyACTG(const std::string& seq);
+bool ContainsOnlyACTG(std::string_view seq);
 
 /**
  * @brief Convert a nucleotide sequence to its 2-bit representation. If the sequence is longer than 32 nt, only the
@@ -106,7 +107,7 @@ std::tuple<std::string, std::string, std::string> FormatVariants(const std::stri
  * @param k K-mer size
  * @return Number of unique k-mers
  */
-u32 CountUniqueKmers(const std::string& seq, u32 k);
+u32 CountUniqueKmers(std::string_view seq, u32 k);
 
 /**
  * @brief Count the homopolymer length from the first base in a given nucleotide sequence.
@@ -114,7 +115,7 @@ u32 CountUniqueKmers(const std::string& seq, u32 k);
  * @param seq Input nucleotide sequence
  * @return Homopolymer length
  */
-u32 GetHomopolymerLength(const std::string& seq);
+u32 GetHomopolymerLength(std::string_view seq);
 
 /**
  * @brief Count consecutive repeats of the first k-mer in a given nucleotide sequence.
@@ -123,7 +124,7 @@ u32 GetHomopolymerLength(const std::string& seq);
  * @param k K-mer size
  * @return Number of occurrences of the repeating k-mer
  */
-u32 CountRepeats(const std::string& seq, u32 k);
+u32 CountRepeats(std::string_view seq, u32 k);
 
 /**
  * @brief Find the start position of the homopolymer overlapping the current position.
@@ -135,5 +136,13 @@ u32 CountRepeats(const std::string& seq, u32 k);
  * @note min_hp_length >= 2 because a homopolymer requires at least two identical bases
  */
 std::optional<u64> FindOverlappingHomopolymer(const std::string& seq, u64 pos, u64 min_hp_length, u64 min_start);
+
+/**
+ * @brief Calculate the GC content (fraction of G and C bases or their lower case) in a nucleotide sequence.
+ * @param seq nucleotide sequence
+ * @return GC content as a fraction in [0, 1], or 0 if the sequence is empty or contains no ACTG characters
+ * @note Non-ACTG characters are excluded from both the numerator and denominator.
+ */
+f32 CalculateGcContent(std::string_view seq);
 
 }  // namespace xoos::svc

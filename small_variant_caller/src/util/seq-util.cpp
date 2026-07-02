@@ -9,18 +9,19 @@
 namespace xoos::svc {
 
 bool IsACTG(const char base) {
-  return base == 'A' || base == 'C' || base == 'G' || base == 'T';
+  return base == 'A' || base == 'C' || base == 'G' || base == 'T' || base == 'a' || base == 'c' || base == 'g' ||
+         base == 't';
 }
 
 bool IsNotACTG(const char base) {
   return !IsACTG(base);
 }
 
-bool IsAnyNotACTG(const std::string& seq) {
+bool IsAnyNotACTG(const std::string_view seq) {
   return std::ranges::any_of(seq, IsNotACTG);
 }
 
-bool ContainsOnlyACTG(const std::string& seq) {
+bool ContainsOnlyACTG(const std::string_view seq) {
   return std::ranges::all_of(seq, IsACTG);
 }
 
@@ -181,16 +182,16 @@ std::tuple<std::string, std::string, std::string> FormatVariants(const std::stri
   return std::make_tuple("", "", "");
 }
 
-u32 CountUniqueKmers(const std::string& seq, const u32 k) {
+u32 CountUniqueKmers(const std::string_view seq, const u32 k) {
   StrUnorderedSet unique_kmers;
   const auto num_kmers = static_cast<u32>(seq.length() - k + 1);
   for (u32 i = 0; i < num_kmers; ++i) {
-    unique_kmers.insert(seq.substr(i, k));
+    unique_kmers.emplace(seq.substr(i, k));
   }
   return static_cast<u32>(unique_kmers.size());
 }
 
-u32 GetHomopolymerLength(const std::string& seq) {
+u32 GetHomopolymerLength(const std::string_view seq) {
   u32 count{0};
   const auto seq_len = static_cast<u32>(seq.length());
   if (seq_len > 0) {
@@ -214,11 +215,11 @@ u32 GetHomopolymerLength(const std::string& seq) {
   return count;
 }
 
-u32 CountRepeats(const std::string& seq, const u32 k) {
+u32 CountRepeats(const std::string_view seq, const u32 k) {
   u32 count{0};
   const auto seq_len = static_cast<u32>(seq.length());
   if (k < seq_len) {
-    const std::string& repeat = seq.substr(0, k);
+    const std::string_view repeat = seq.substr(0, k);
     if (IsAnyNotACTG(repeat)) {
       return count;
     }
@@ -282,6 +283,23 @@ std::optional<u64> FindOverlappingHomopolymer(const std::string& seq,
 
   // pos does not overlap a homopolymer
   return std::nullopt;
+}
+
+f32 CalculateGcContent(const std::string_view seq) {
+  u32 gc_count{0};
+  u32 actg_count{0};
+  for (const char base : seq) {
+    if (IsACTG(base)) {
+      ++actg_count;
+      if (base == 'G' || base == 'C' || base == 'g' || base == 'c') {
+        ++gc_count;
+      }
+    }
+  }
+  if (actg_count == 0) {
+    return 0.0F;
+  }
+  return static_cast<f32>(gc_count) / static_cast<f32>(actg_count);
 }
 
 }  // namespace xoos::svc

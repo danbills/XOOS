@@ -6,9 +6,8 @@ namespace xoos::demux {
 
 // Helper function to create a TrimDuplexStem for stem processing
 TrimDuplexStem CreateTrimStem(const LutBundleDuplexStem& lut_bundle) {
-  return TrimDuplexStem{lut_bundle.Sid5pMatcher(),        lut_bundle.Sid3pMatcher(),  lut_bundle.StartSequenceMatcher(),
-                        lut_bundle.StopSequenceMatcher(), lut_bundle.Stem5pMatcher(), lut_bundle.Stem3pMatcher(),
-                        lut_bundle.LoopSequence()};
+  return TrimDuplexStem{lut_bundle.Runway5pMatcher(), lut_bundle.StartSequenceMatcher(), lut_bundle.Stem5pMatcher(),
+                        lut_bundle.Stem3pMatcher()};
 }
 
 DemuxAndTrimDuplexStem::DemuxAndTrimDuplexStem(const LutBundleDuplexStem& lut_bundle)

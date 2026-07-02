@@ -3,9 +3,22 @@
 #include <xoos/log/logging.h>
 #include <xoos/types/int.h>
 
+#include <algorithm>
+#include <atomic>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "sequence/kmer/kmerizer.h"
+#include "utility/math-util.h"
 
 namespace xoos::demux::strand {
+
+constexpr int kReferenceChunkBases = 65536;
+constexpr u32 kMaxSupportedKmerSize = 31;
+constexpr size_t kBitsPerByte = 8;
+constexpr size_t kBytesPerMiB = 1024 * 1024;
+constexpr size_t kBitsPerMiB = kBitsPerByte * kBytesPerMiB;
 
 /**
  * @brief Build the strand kmer map which determines unique strand k-mers using a hash table.
@@ -16,7 +29,7 @@ namespace xoos::demux::strand {
  * @details This function reads the reference genome in chunks and builds the kmer strand map.
  */
 void BuildStrandMap(io::FastaReader& reader, tf::Executor& executor, StrandKmerTable& strand_map, u32 kmer_size) {
-  int fastq_chunk_size = 65536;
+  int fastq_chunk_size = kReferenceChunkBases;
   tf::Taskflow taskflow;
   // iterate over the reference genome and build the kmer strand map
   for (const auto& record : reader) {
@@ -60,7 +73,7 @@ void BuildStrandMap(io::FastaReader& reader, tf::Executor& executor, StrandKmerT
 size_t CountStrandKmers(const std::vector<std::atomic<u64>>& strand_table, tf::Executor& executor,
                         size_t& num_unique_kmers_fw_total, size_t& num_unique_kmers_rv_total) {
   const auto threads = executor.num_workers();
-  const size_t map_chunk_size = strand_table.size() / threads + 1;
+  const size_t map_chunk_size = CeilDiv(strand_table.size(), threads);
 
   std::vector<size_t> num_unique_kmers_fw(threads, 0);
   std::vector<size_t> num_unique_kmers_rv(threads, 0);
@@ -113,7 +126,7 @@ size_t CountStrandKmers(const std::vector<std::atomic<u64>>& strand_table, tf::E
 void BuildStrandFilter(const std::vector<std::atomic<u64>>& strand_table, InterleavedBloomFilter& bf,
                        tf::Executor& executor) {
   const auto threads = executor.num_workers();
-  const size_t map_chunk_size = strand_table.size() / threads + 1;
+  const size_t map_chunk_size = CeilDiv(strand_table.size(), threads);
 
   tf::Taskflow taskflow;
   for (size_t i = 0; i < threads; ++i) {
@@ -144,9 +157,13 @@ void BuildStrandFilter(const std::vector<std::atomic<u64>>& strand_table, Interl
  * counts unique k-mers, and constructs Bloom filters for forward and reverse strands.
  */
 void StrandBuildPipeline(const StrandBuildParam& param) {
+  const auto input_path = param.input.string();
+  const auto output_path = param.output.string();
+  const auto max_supported_kmer_size = static_cast<int>(kMaxSupportedKmerSize);
+
   // check if the input file exists
   if (!fs::exists(param.input)) {
-    throw std::runtime_error("Input file does not exist: " + param.input.string());
+    throw std::runtime_error(std::string("Input file does not exist: ") + input_path);
   }
 
   // check thread number
@@ -160,11 +177,11 @@ void StrandBuildPipeline(const StrandBuildParam& param) {
   }
 
   // Check k-mer size
-  if (param.kmer_size > 31) {
-    throw std::runtime_error("Max kmer size is 31");
+  if (param.kmer_size > kMaxSupportedKmerSize) {
+    throw std::runtime_error("Max kmer size is " + std::to_string(max_supported_kmer_size));
   }
 
-  Logging::Info("Reading fasta and index file: {}", param.input.string());
+  Logging::Info("Reading fasta and index file: {}", input_path.c_str());
 
   // start reading the reference genome using fasta reader
   io::FastaReader reader(param.input);
@@ -175,9 +192,10 @@ void StrandBuildPipeline(const StrandBuildParam& param) {
     total_bases += record.second;
   }
   StrandKmerTable kmer_strand_map(total_bases);
+  const auto allocated_size_mib = static_cast<u64>((kmer_strand_map.Size() * kBitsPerByte) / kBytesPerMiB);
 
-  Logging::Info("Building kmer strand hash table. Total bases: {}. Allocated size: {} MB", total_bases,
-                (kmer_strand_map.Size() * 8) / 1024 / 1024);
+  Logging::Info("Building kmer strand hash table. Total bases: {}. Allocated size: {} MB",
+                static_cast<u64>(total_bases), allocated_size_mib);
 
   tf::Executor executor(param.threads);
 
@@ -191,8 +209,8 @@ void StrandBuildPipeline(const StrandBuildParam& param) {
   const size_t num_unique_kmers_both_total =
       CountStrandKmers(table, executor, num_unique_kmers_fw_total, num_unique_kmers_rv_total);
 
-  Logging::Info("Unique k-mers fw: {} rv: {} both: {} ", num_unique_kmers_fw_total, num_unique_kmers_rv_total,
-                num_unique_kmers_both_total);
+  Logging::Info("Unique k-mers fw: {} rv: {} both: {} ", static_cast<u64>(num_unique_kmers_fw_total),
+                static_cast<u64>(num_unique_kmers_rv_total), static_cast<u64>(num_unique_kmers_both_total));
 
   // get optimal number of hash functions relative to max FPR
   const auto hash_count = InterleavedBloomFilter::CalcOptimalNumHashes(param.max_false_positive_rate);
@@ -200,19 +218,20 @@ void StrandBuildPipeline(const StrandBuildParam& param) {
   // Initialize the bloom filters
   InterleavedBloomFilter filter(num_unique_kmers_fw_total, num_unique_kmers_rv_total, hash_count, param.kmer_size,
                                 param.max_false_positive_rate);
+  const auto filter_size_mib = static_cast<u64>(filter.Size() / kBitsPerMiB);
 
-  Logging::Info("Building Interleaved Bloom filter with {} hash functions of size {} mb", hash_count,
-                filter.Size() / 8388608);
+  Logging::Info("Building Interleaved Bloom filter with {} hash functions of size {} mb", static_cast<u64>(hash_count),
+                filter_size_mib);
 
   BuildStrandFilter(table, filter, executor);
 
-  const auto fprs = filter.FalsePositiveRates();
+  const auto [forward_fpr, reverse_fpr] = filter.FalsePositiveRates();
 
   // Sanity check by reporting the FPR
-  Logging::Info("Interleaved Bloom filter false positive rates. Forward: {} Reverse: {}", fprs.first, fprs.second);
+  Logging::Info("Interleaved Bloom filter false positive rates. Forward: {} Reverse: {}", forward_fpr, reverse_fpr);
 
   filter.Save(param.output);
-  Logging::Info("Saved bloom filters to {}", param.output.string());
+  Logging::Info("Saved bloom filters to {}", output_path.c_str());
 }
 
 }  // namespace xoos::demux::strand

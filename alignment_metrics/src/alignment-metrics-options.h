@@ -16,14 +16,15 @@ constexpr s32 kDefaultMaxReadLengthBin = 1'000;
 constexpr s32 kDefaultMaxReferenceBufferLength = 1'000;
 constexpr s32 kDefaultRegionSize = 10'000;
 constexpr u32 kDefaultMinDepth = 10;
-constexpr f64 kDefaultMaxAltAlleleFraction = 0.3;
+constexpr f64 kDefaultMaxAltAlleleFraction = 0.1;
 constexpr u32 kDefaultMaxCoverageBin = 10'000;
-constexpr u32 kDefaultMinBaseq = 0;
+constexpr u32 kDefaultMinBaseq = 30;
 constexpr u8 kDefaultBaseQualityThresholdForHpMasking = 5;
 constexpr auto kDefaultMinBaseType = yc_decode::BaseType::kSimplex;
 constexpr auto kMaxTrimLeadingBases = 50u;
 constexpr auto kMaxTrimTrailingBases = 50u;
-constexpr u32 kDefaultMinMapq = 0;
+constexpr u32 kDefaultMinMapq = 4;
+constexpr u32 kMinBaseQuality = 0u;
 constexpr u32 kMaxBaseQuality = 255u;
 const std::vector<u64> kDefaultSummaryStatsPercentiles{10, 25, 50, 75, 90};
 const std::vector<u64> kDefaultCoverageCutoffs{10, 20, 30};
@@ -87,7 +88,7 @@ struct AlignmentMetricsOptions {
   bool enable_te_metrics{};
 
   MetricsTypes metric_types{};
-  io::Comments comments{};
+  io::CommandLineInfo command_line_info{};
 };
 
 /**

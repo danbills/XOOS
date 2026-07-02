@@ -209,7 +209,8 @@ std::string GetYcTagString(const bam1_t* const record) {
   // extract YC tag string from BAM record aux fields
   const u8* const yc_tag_data = bam_aux_get(record, "YC");
   if (yc_tag_data == nullptr) {
-    return "";  // return empty string if YC tag is not present
+    // return empty string if YC tag is not present
+    return "";
   }
   return std::string{bam_aux2Z(yc_tag_data)};
 }

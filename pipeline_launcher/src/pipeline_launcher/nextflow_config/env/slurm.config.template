@@ -1,0 +1,337 @@
+/*
+    SLURM HPC environment config template.
+    Replace all <PLACEHOLDER> values before use.
+    Copy this file to <profile_name>.config and fill in the values.
+*/
+profiles {
+    <PROFILE_NAME> {
+        singularity.enabled = true
+        singularity.pullTimeout = '2h'
+
+        validation {
+          ignoreParams = ['slurm_account', 'slurm_qos', 'error_strategy_fallback']
+        }
+
+        process {
+            executor       = 'slurm'
+            queue          = '<CPU_PARTITION>'
+
+            maxRetries    = 3
+            errorStrategy = { task.exitStatus == null || task.exitStatus in (135..140) + [125, 126, 255, Integer.MAX_VALUE] ? 'retry' : params.getOrDefault('error_strategy_fallback', 'ignore') }
+
+            // Each rung must be a real QOS; its threshold must equal that QOS MaxWall.
+            clusterOptions = {
+                def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                              ((task.time <= 3.h) ? '3h' :
+                               (task.time <= 1.d) ? '1d' :
+                               (task.time <= 3.d) ? '3d' :
+                               '<MAX_QOS>')
+                def base_opts = "--qos=${qos_val}"
+                def acct = params.getOrDefault('slurm_account', '')
+                return acct ? "${base_opts} --account=${acct}" : base_opts
+            }
+
+            // Set to the hardware limits of the smallest node in the partition.
+            // memory: RAM per node. cpus: CPUs per node.
+            // time must equal the top QOS MaxWall (<MAX_QOS>) so retries clamp within QOS.
+            resourceLimits = [
+                memory: <MAX_MEMORY_PER_NODE>.GB,
+                cpus: <MAX_CPUS_PER_NODE>,
+                time: <MAX_WALLTIME>.d
+            ]
+
+            // --- Standard process labels ---
+
+            withLabel:process_single {
+                cpus           = 1
+                memory         = { 1.GB   * task.attempt }
+                time           = { 4.h    * task.attempt }
+            }
+
+            withLabel:process_low {
+                cpus           = 2
+                memory         = { 4.GB   * task.attempt }
+                time           = { 4.h    * task.attempt }
+            }
+
+            withLabel:process_medium {
+                cpus           = 8
+                memory         = { 16.GB  * task.attempt }
+                time           = { 8.h    * task.attempt }
+            }
+
+            withLabel:process_high {
+                cpus           = 32
+                memory         = { 48.GB  * task.attempt }
+                time           = { 16.h   * task.attempt }
+            }
+
+            withLabel:process_long {
+                time           = { 20.h   * task.attempt }
+            }
+
+            withLabel:process_high_memory {
+                cpus           = 32
+                memory         = { 128.GB * task.attempt }
+                time           = { 16.h   * task.attempt }
+            }
+
+            // GPU partition — adjust queue, GRES type, and container options for your cluster.
+            // Set accelerator to the number of GPUs per task.
+            // If the cluster uses shard-based GPU scheduling, use --gres=shard:<GPU_TYPE>:<SHARDS>
+            // instead of --gres=gpu:<GPU_TYPE>:<COUNT>.
+            withLabel:process_gpu {
+                queue          = '<GPU_PARTITION>'
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:${task.accelerator ? task.accelerator.request : 1}"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+                accelerator      = 1
+                containerOptions = '--nv'
+            }
+
+            // --- Process-specific overrides ---
+
+            withName: BCFTOOLS_CONCAT {
+                cpus           = 2
+                memory         = { 1.GB * task.attempt }
+                time           = { 2.h  * task.attempt }
+            }
+
+            withName: XOOS_READ_COLLAPSER_MARK_DUPLICATES {
+                cpus           = 16
+                memory         = { 16.GB * task.attempt }
+                time           = { 8.h   * task.attempt }
+            }
+
+            withName: XOOS_SMALL_VARIANT_CALLER_COMPUTE_VCF_FEATURES {
+                cpus           = 8
+                memory         = { 8.GB  * task.attempt }
+                time           = { 2.h   * task.attempt }
+            }
+
+            // --- Process-specific overrides ---
+
+            withName: SUBSAMPLE_RUN {
+                time           = { 8.h * task.attempt }
+            }
+
+            withName: XOOS_DEMUX {
+                cpus           = 32
+                memory         = { 48.GB * task.attempt }
+                time           = { 1.d * task.attempt }
+            }
+
+            // Run-level tasks operate on a whole run rather than a single
+            // sample, so a failure here compromises every downstream sample.
+            // Use 'finish' instead of the configurable global error_strategy_fallback
+            // (default 'ignore') so a failure stops the run.
+            withName: 'XOOS_DEMUX|SUBSAMPLE_BASECALL_RDB|SUBSAMPLE_BASECALL_FASTQ|XOOS_GENERATE_REPORT|XOOS_GENERATE_REPORT_SUMMARY|MULTIQC' {
+                errorStrategy  = { task.exitStatus == null || task.exitStatus in (135..140) + [125, 126, 255, Integer.MAX_VALUE] ? 'retry' : 'finish' }
+            }
+
+            withName: BWA_MEM_SINGLE_END_MULTIPLE_FASTQS {
+                cpus           = 32
+                memory         = { 64.GB * task.attempt }
+                time           = { 1.d * task.attempt }
+            }
+
+            withName: SAMTOOLS_VIEW {
+                cpus           = 4
+                memory         = { 4.GB * task.attempt }
+                time           = { 8.h * task.attempt }
+            }
+
+            withName: KMC_KMER_COUNT {
+                cpus           = 12
+                memory         = { 24.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: VG_GIRAFFE {
+                cpus           = 32
+                memory         = { 100.GB * task.attempt }
+                time           = { 1.d * task.attempt }
+            }
+
+            withName: VG_AUTOINDEX {
+                cpus           = 6
+                memory         = { 96.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: VG_HAPLOTYPES {
+                cpus           = 8
+                memory         = { 48.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: GATK4_HAPLOTYPECALLER {
+                cpus           = 4
+                memory         = { 8.GB * task.attempt }
+                time           = { 8.h * task.attempt }
+            }
+
+            withName: GATK4_MUTECT2 {
+                cpus           = 4
+                memory         = { 8.GB * task.attempt }
+                time           = { 8.h * task.attempt }
+            }
+
+            withName: RTGTOOLS_FORMAT {
+                time           = { 2.h * task.attempt }
+                memory         = { 2.GB * task.attempt }
+            }
+
+            withName: XOOS_COPY_NUMBER_CALLER_GERMLINE_WGS {
+                cpus           = 16
+                memory         = { 16.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: XOOS_SMALL_VARIANT_CALLER_FILTER_VARIANTS_TUMOR_NORMAL_WGS {
+                cpus           = 24
+                memory         = { 96.GB * task.attempt }
+                time           = { 4.h * task.attempt }
+            }
+
+            withName: XOOS_COPY_NUMBER_CALLER_TUMOR_NORMAL_WGS {
+                cpus           = 24
+                memory         = { 24.GB * task.attempt }
+                time           = { 4.h * task.attempt }
+            }
+
+            withName: GATK4_MERGEVCFS {
+                cpus           = 1
+                memory         = { 4.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: XOOS_STR_CALLER {
+                cpus           = 8
+                memory         = { 16.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: 'XOOS_ALIGNMENT_METRICS_ALL|XOOS_ALIGNMENT_METRICS_COVERAGE' {
+                cpus           = 16
+                memory         = { 16.GB * task.attempt }
+                time           = { 2.h * task.attempt }
+            }
+
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                cpus           = 2
+                memory         = { 16.GB * task.attempt }
+                time           = { 4.h * task.attempt }
+            }
+
+            withName: XOOS_CONTAMINATION_DETECTOR {
+                cpus           = 24
+                memory         = { 48.GB * task.attempt }
+                time           = { 4.h   * task.attempt }
+            }
+
+            // GPU processes — adjust clusterOptions GRES for your GPU type and scheduling model.
+            // Memory is set per-process below; PARABRICKS_MUTECTCALLER is
+            // pinned to 96 GB.
+
+            withName: PARABRICKS_GIRAFFE_SINGLE_END_MULTIPLE_FASTQS {
+                cpus           = 32
+                time           = { 8.h * task.attempt }
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:1"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+            }
+
+            withName: PARABRICKS_MINIMAP2 {
+                cpus           = 32
+                time           = { 8.h * task.attempt }
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:1"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+            }
+
+            withName: PARABRICKS_FQ2BAM_SINGLE_END_MULTIPLE_FASTQS {
+                cpus           = 32
+                time           = { 12.h * task.attempt }
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:1"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+            }
+
+            withName: PARABRICKS_HAPLOTYPECALLER {
+                cpus           = 32
+                time           = { 8.h * task.attempt }
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:1"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+            }
+
+            withName: PARABRICKS_MUTECTCALLER {
+                cpus           = 32
+                memory         = 96.GB
+                time           = { 2.d * task.attempt }
+                clusterOptions = {
+                    def qos_val = params.getOrDefault('slurm_qos', '') ?:
+                                  ((task.time <= 3.h) ? '3h' :
+                                   (task.time <= 1.d) ? '1d' :
+                                   (task.time <= 3.d) ? '3d' :
+                                   '<MAX_QOS>')
+                    def base_opts = "--qos=${qos_val} --gres=gpu:<GPU_TYPE>:1"
+                    def acct = params.getOrDefault('slurm_account', '')
+                    return acct ? "${base_opts} --account=${acct}" : base_opts
+                }
+            }
+        }
+    }
+
+    somatic_wgs_tn_duplex {
+        process {
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                time           = { 12.h * task.attempt }
+            }
+        }
+    }
+
+    somatic_wgs_tn_duplex_benchmark {
+        process {
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                time           = { 12.h * task.attempt }
+            }
+        }
+    }
+}

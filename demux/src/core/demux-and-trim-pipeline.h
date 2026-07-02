@@ -4,12 +4,10 @@
 
 #include <filesystem>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "bloom-filter/interleaved-bloom-filter.h"
 #include "metrics/simplex-metrics.h"
-#include "sequence/matcher/match-info.h"
 #include "sequence/strand/strand-classifier.h"
 #include "task/sink-worker.h"
 
@@ -20,6 +18,7 @@ namespace fs = std::filesystem;
 enum class ReadLengthMode {
   kFullOnly,
   kAll,
+  kAllSplit,
 };
 
 struct DemuxAndTrimParam {
@@ -37,6 +36,8 @@ struct DemuxAndTrimParam {
   size_t batch_size{500};
   /// @brief Read filtering type for demultiplexing simplex reads
   ReadLengthMode read_length_mode{ReadLengthMode::kAll};
+  /// @brief How to handle reads where 5' and 3' SIDs disagree.
+  DiscordantSidMode discordant_sid_mode{DiscordantSidMode::kDiscardTied};
   /// @brief The path to the bundle containing the possible adapter designs.
   fs::path adapter_design_bundle{"/resources/adapter-design-bundle.zip"};
   /// @brief The adapter design name from the bundle to be used.
@@ -55,6 +56,9 @@ struct DemuxAndTrimParam {
   SinkCompressionType compression_type{SinkCompressionType::kGzip};
   /// @brief The maximum number of writing threads allocated per SID
   size_t writing_threads_per_sample{1};
+  /// @brief Divisor used to determine how many input files are processed concurrently.
+  /// Concurrent inputs = threads / worker_threads_per_input (minimum 1). Clamped to threads if larger.
+  size_t worker_threads_per_input{4};
   /// @brief The maximum error rate allowed in intra-molecular consensus (pre-trim) duplex data
   float max_error_rate_percent{10.0f};
   /// @brief Minimum concordant duplex bases to process before stopping. If set to std::nullopt should not stop early.
@@ -68,26 +72,22 @@ struct DemuxAndTrimParam {
   std::optional<strand::StrandClassifier> strand_classifier;
   /// @brief Output of non-demuxed raw reads, usually for debugging purposes
   bool output_failed_reads{false};
+  /// @brief When true, do not override base quality scores for simplex adapter reads with kSimplexBaseQual
+  bool suppress_simplex_qual_override{false};
+  /// @brief Minimum score needed for a valid match log odds 30 is 1/(2^30) = 1/(1024^3) is roughly equal to 1/(10^9)
+  // that is we have 1 in a billion chance of a false positive per site (assuming our scoring scheme reflects reality)
+  // This a match is counts as 2 so this is a minimum of 15 exact base matches
+  s32 min_score{30};
 
   // Control parameters not directly exposed to users, useful because this struct remains const throughout runtime
   /// @brief If true, the data will be processed as methylation data
   bool methylation{false};
+  /// @brief If true, emit trim coordinates in output FASTQ comments for trimming evaluation
+  bool trimming_debug{false};
 
-  /// @brief Comments to be added to output files
-  io::Comments comments{};
+  /// @brief Tool name, version, and command line for output file metadata
+  io::CommandLineInfo command_line_info{};
 };
-
-namespace detail {
-
-using SidPool = std::unordered_map<uint, Barcode>;
-
-SidPool LoadSampleSheet(const BarcodePool& sid_pool, const fs::path& samplesheet);
-
-BarcodePool LoadSampleSheet(const fs::path& samplesheet);
-
-SidPool LoadSidPool(const BarcodePool& sid_pool);
-
-}  // namespace detail
 
 /**
  * @brief Check metrics validation and handle existing metrics files.

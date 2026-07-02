@@ -6,6 +6,7 @@
 #include <utility>
 
 #include <xoos/error/error.h>
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/fasta-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/io/htslib-util/htslib-util.h>
@@ -15,7 +16,6 @@
 
 #include "core/interval.h"
 #include "core/super-region.h"
-#include "io/alignment-reader.h"
 #include "io/bed-reader.h"
 #include "util/region-util.h"
 
@@ -61,10 +61,10 @@ RegionLookupTable::RegionLookupTable(const fs::path& bam_path,
   // Move the partitioned regions into the lookup table's internal data structure
   // We query the BAM file for chromosomes with no reads mapped to them. For these chromosomes,
   // we add them to `_regions_without_coverage_by_chr` to avoid processing them in the metrics calculation phase.
-  const AlignmentReader bam_reader = OpenAlignmentFile(bam_path);
+  const io::AlignmentReader bam_reader = io::OpenAlignmentReader(bam_path);
   for (const auto& [chromosome, regions] : partitioned_regions) {
     // Query the BAM using an iterator to determine if there are any reads mapped to this chromosome
-    const auto alignment_itr = io::SamItrQueryS(bam_reader.idx.get(), bam_reader.header.get(), chromosome);
+    const auto alignment_itr = io::SamItrQueryS(bam_reader.idx.get(), bam_reader.hdr.get(), chromosome);
     if (alignment_itr.get() == nullptr) {
       _regions_without_coverage_by_chr[chromosome] = regions;
     } else {

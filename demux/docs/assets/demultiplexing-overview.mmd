@@ -1,0 +1,11 @@
+flowchart TB
+  subgraph input["Sequencer output (raw reads)"]
+    R["[SID-A] DNA fragment 1 [SID-A]\n[SID-B] DNA fragment 2 [SID-B]\n[SID-A] DNA fragment 3 [SID-A]\n[SID-C] DNA fragment 4 [SID-C]"]
+  end
+
+  input --> demux(["Demuxing"])
+  demux --> A & B & C
+
+  A["Sample A\n(SID = A)"]
+  B["Sample B\n(SID = B)"]
+  C["Sample C\n(SID = C)"]

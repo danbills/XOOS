@@ -1,0 +1,5 @@
+sources:
+  "1.2":
+    url: "https://github.com/cdalitz/hclust-cpp/archive/refs/tags/v1.2.tar.gz"
+    sha256: "37a905c6b321c9beb73648e53a07d4195b12913d642d434637b4888f1409b223"
+    strip_root: true

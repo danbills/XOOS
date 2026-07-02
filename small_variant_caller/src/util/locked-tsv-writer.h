@@ -20,8 +20,8 @@ class LockedTsvWriter {
   explicit LockedTsvWriter(const fs::path& file_path);
 
   /**
-   * @brief Write the header row to the TSV file.
-   * @param header Vector of strings representing the header row
+   * @brief Write a row to the TSV file.
+   * @param row Vector of strings representing a single row
    */
   void AppendRow(const vec<std::string>& row);
 
@@ -32,10 +32,10 @@ class LockedTsvWriter {
   void AppendRows(const vec<vec<std::string>>& rows);
 
   /**
-   * @brief Append comments to the TSV file.
-   * @param comments Comments to append
+   * @brief Write version and command line metadata to the TSV file.
+   * @param info Command line info containing version and command line
    */
-  void AppendComments(const io::Comments& comments);
+  void AppendMetadata(const io::CommandLineInfo& info);
 
   void Flush();
 

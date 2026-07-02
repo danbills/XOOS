@@ -15,10 +15,10 @@ namespace xoos::alignment_metrics {
 struct CoverageUniformityMetrics {
   std::map<u64, u32> region_counts_by_mean_coverage{};
 
-  void WriteMeanCoverageHistogram(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteMeanCoverageHistogram(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   void WriteCoverageUniformitySummaryTsv(const fs::path& output_path,
-                                         const io::Comments& comments,
+                                         const io::CommandLineInfo& command_line_info,
                                          const histogram::Histogram<u64>& filtered_coverage_histogram) const;
 
   CoverageUniformityMetrics& operator+=(const CoverageUniformityMetrics& other);
@@ -29,7 +29,7 @@ struct CoverageUniformityMetrics {
  * penalty, etc.
  */
 struct CoverageUniformitySummary {
-  u64 mean_coverage{0};
+  f64 mean_coverage{0.0};
   u64 median_coverage{0};
   u32 target_region_count{0};
   u32 target_regions_with_no_coverage{0};
@@ -44,7 +44,7 @@ struct CoverageUniformitySummary {
   CoverageUniformitySummary(const histogram::Histogram<u64>& filtered_coverage_histogram,
                             const std::map<u64, u32>& mean_coverage_histogram);
 
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 };
 
 }  // namespace xoos::alignment_metrics

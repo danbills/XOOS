@@ -14,6 +14,18 @@
 
 namespace xoos::svc {
 
+/**
+ * @brief Update a VCF record for the given features within the germline workflow.
+ * @param record VCF record to be updated
+ * @param bam_feat BAM features
+ * @param vcf_feat VCF features
+ * @param is_duplex_protocol Whether the sequencing protocol is duplex
+ */
+void UpdateGermlineRecordWithFeatures(const io::VcfRecordPtr& record,
+                                      const BamFeatureTuple& bam_feat,
+                                      const VcfFeature& vcf_feat,
+                                      bool is_duplex_protocol);
+
 class FilterRegionClass {
  private:
   const GlobalContext& _global_ctx;
@@ -22,7 +34,7 @@ class FilterRegionClass {
 
   vec<VariantId> _tmp_vids;
   vec<io::VcfRecordPtr> _tmp_records;
-  vec<GenotypeScore> _tmp_genotypes;
+  vec<PredictionScore> _tmp_genotypes;
   vec<io::VcfRecordPtr> _tmp_alt_wildcard_records;
 
  public:
@@ -43,13 +55,13 @@ class FilterRegionClass {
    * the given region BAM and VCF features are computed, then variants are filtered by chromosomal position, assigned a
    * genotype, and written to the output buffer.
    *
-   * @param flow_ctx Flow context for managing output records.
+   * @param result RegionResult for output records and SHAP value rows.
    * @param region Target region to filter variants.
    *
    * @note This function assumes that the `_worker_ctx` and `_global_ctx` are properly initialized and contain the
    * necessary information for filtering.
    */
-  void FilterGermlineRegion(const TargetRegion& region, FlowContext& flow_ctx);
+  void FilterGermlineRegion(const TargetRegion& region, RegionResult& result);
 
   /**
    * @brief Filter variants in a specified region for the `tumor-only-te` workflow.
@@ -59,13 +71,13 @@ class FilterRegionClass {
    * failure reason if not considered passing somatic variation based on the ML filtering or other filtering criteria,
    * and written to the output buffer.
    *
-   * @param flow_ctx Flow context for managing output records.
+   * @param result RegionResult for output records and SHAP value rows.
    * @param region Target region to filter variants.
    *
    * @note This function assumes that the `_worker_ctx` and `_global_ctx` are properly initialized and contain the
    * necessary information for filtering.
    */
-  void FilterTumorOnlyTeRegion(const TargetRegion& region, FlowContext& flow_ctx);
+  void FilterTumorOnlyTeRegion(const TargetRegion& region, RegionResult& result);
 
   /**
    * @brief Filter variants in a specified region for the `tumor-normal-wgs` workflow.
@@ -75,15 +87,15 @@ class FilterRegionClass {
    * failure reason if not considered passing somatic variation based on the ML filtering or other filtering criteria,
    * and written to the output buffer.
    *
-   * @param flow_ctx Flow context for managing output records.
+   * @param result RegionResult for output records and SHAP value rows.
    * @param region Target region to filter variants.
    *
    * @note This function assumes that the `_worker_ctx` and `_global_ctx` are properly initialized and contain the
    * necessary information for filtering.
    */
-  void FilterTumorNormalRegion(const TargetRegion& region, FlowContext& flow_ctx);
+  void FilterTumorNormalRegion(const TargetRegion& region, RegionResult& result);
 
-  void FilterGermlineTaggingRegion(const TargetRegion& region, FlowContext& flow_ctx);
+  void FilterGermlineTaggingRegion(const TargetRegion& region, RegionResult& result);
 
   /**
    * @brief Reconcile germline features for the given region and position, updating the previous position and maximum
@@ -137,7 +149,7 @@ class FilterRegionClass {
    * @param vcf_features A map of VariantId to VCF features.
    * @param bam_features A collection of BAM features.
    * @param normalize_target A normalization target for feature values.
-   * @param out_records An output vector to store filtered VCF records.
+   * @param result RegionResult for output VCF records and SHAP value rows
    *
    * @note This function directly sets _temp_vids, _temp_records, _temp_genotypes, and _temp_alt_wildcard_records as
    * needed for later reconciliation.
@@ -146,7 +158,7 @@ class FilterRegionClass {
                             const VarIdToVcfFeatures& vcf_features,
                             const BamRegionFeatureCollection& bam_features,
                             const DepthTuple& normalize_target,
-                            vec<io::VcfRecordPtr>& out_records);
+                            RegionResult& result);
 
   /**
    * @brief Filter multiple alleles in a VCF record for the `germline-tagging` workflow. This function processes a VCF
@@ -155,6 +167,7 @@ class FilterRegionClass {
    * @param vcf_features A map of VariantId to VCF features.
    * @param bam_features A collection of BAM features.
    * @param normalize_target An optional normalization target for feature values.
+   * @param shap_value_rows Vector for output SHAP value rows
    *
    * @note This function directly sets _temp_vids, _temp_records, _temp_genotypes, and _temp_alt_wildcard_records as
    * needed for later reconciliation.
@@ -162,7 +175,8 @@ class FilterRegionClass {
   void FilterGermlineTaggingRecord(const io::VcfRecordPtr& record,
                                    const VarIdToVcfFeatures& vcf_features,
                                    const BamRegionFeatureCollection& bam_features,
-                                   const DepthTuple& normalize_target);
+                                   const DepthTuple& normalize_target,
+                                   vec<vec<std::string>>& shap_value_rows);
 
   /**
    * Checks if the region is haploid based on the previous position and end position. The region is compared to the PAR
@@ -174,6 +188,13 @@ class FilterRegionClass {
    * @return True is region is haploid, false otherwise.
    */
   bool IsHaploid(const TargetRegion& region, u64 prev_pos, u64 prev_pos_end) const;
+
+  /**
+   * @brief Reset the temporary storage vectors used for holding variant records, features, and genotypes during
+   * processing. This function is used during region processing to clear out data from previously processed positions
+   * and ensure that the temporary storage is ready for the next set of variants to be processed.
+   */
+  void ResetTmpStorage();
 };
 
 }  // namespace xoos::svc

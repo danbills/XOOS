@@ -42,10 +42,9 @@ char GetBase(const u8* seq, const u64 qpos) {
  * read length.
  */
 std::string GetSequence(const u8* seq, const u64 start, const u64 len) {
-  std::string sequence;
-  sequence.reserve(len);
-  for (u64 i = start; i < start + len; ++i) {
-    sequence.push_back(GetBase(seq, i));
+  std::string sequence(len, '\0');
+  for (u64 i = 0; i < len; ++i) {
+    sequence[i] = GetBase(seq, start + i);
   }
   return sequence;
 }

@@ -11,7 +11,7 @@ static Trim5pYs CreateTrim5p(const bool enable_partial, const LutBundleYs& lut_b
 }
 
 static Trim3pYs CreateTrim3p(const bool enable_partial, const LutBundleYs& lut_bundle) {
-  return Trim3pYs{enable_partial, lut_bundle.Sid3pMatcher(), lut_bundle.SidSpacer3pMatcher()};
+  return Trim3pYs{enable_partial, lut_bundle.Sid3pMatcher(), lut_bundle.Bait3p().value()};
 }
 
 DemuxAndTrimYs::DemuxAndTrimYs(const bool enable_partial, const LutBundleYs& lut_bundle)
@@ -19,20 +19,44 @@ DemuxAndTrimYs::DemuxAndTrimYs(const bool enable_partial, const LutBundleYs& lut
       _trim_5p{CreateTrim5p(enable_partial, lut_bundle)},
       _trim_3p{CreateTrim3p(enable_partial, lut_bundle)} {}
 
-TrimInfoYs DemuxAndTrimYs::operator()(const FixedReadRecord& record) const {
+TrimInfoSimplex DemuxAndTrimYs::operator()(const FixedReadRecord& record) const {
   // speed optimization by converting the sequence to a 2-bit representation.
   const auto trim_5p = _trim_5p.Trim(record.TwoBitsSeq(), record.SeqLen(), record.Seq());
   const auto trim_3p = _trim_3p.Trim(record.TwoBitsSeq(), record.SeqLen(), record.Seq(), trim_5p.insert_start);
-  return Demux(trim_5p, trim_3p);
+  return Demux(trim_5p, trim_3p, record.SeqLen());
 }
 
-TrimInfoYs DemuxAndTrimYs::Demux(const Trim5pInfoYs& trim_5p, const Trim3pInfoYs& trim_3p) const {
-  const auto insert_start = trim_5p.insert_start;
-  const auto insert_end = trim_3p.insert_end;
-  return TrimInfoYs{
-      DetermineSampleId(trim_5p, trim_3p), MatchInfo::BarcodeId(trim_5p.sid_match),
-      MatchInfo::EDist(trim_5p.sid_match), MatchInfo::BarcodeId(trim_3p.sid_match),
-      MatchInfo::EDist(trim_3p.sid_match), LociRange{std::min(insert_start, insert_end), insert_end},
+TrimInfoSimplex DemuxAndTrimYs::Demux(const Trim5pInfoYs& trim_5p, const Trim3pInfoYs& trim_3p,
+                                      const u32 seq_length) const {
+  const auto sid_5p = MatchInfo::BarcodeId(trim_5p.sid_match);
+  const auto sid_3p = MatchInfo::BarcodeId(trim_3p.sid_match);
+  const auto sid_5p_edist = MatchInfo::EDist(trim_5p.sid_match);
+  const auto sid_3p_edist = MatchInfo::EDist(trim_3p.sid_match);
+
+  auto insert_start = trim_5p.insert_start;
+  auto insert_end = trim_3p.insert_end;
+
+  // Winning-side-only trimming for discordant reads
+  if (sid_5p && sid_3p && *sid_5p != *sid_3p) {
+    if (sid_5p_edist && sid_3p_edist && *sid_3p_edist < *sid_5p_edist) {
+      // 3' wins — don't trim 5'
+      insert_start = 0;
+    } else {
+      // 5' wins (including tie) — don't trim 3'
+      insert_end = seq_length;
+    }
+  }
+
+  return TrimInfoSimplex{
+      DetermineSampleId(trim_5p, trim_3p),
+      sid_5p,
+      sid_5p_edist,
+      sid_3p,
+      sid_3p_edist,
+      LociRange{std::min(insert_start, insert_end), insert_end},
+      // Setting score here is a hack to allow for smoother breaking upstream
+      sid_5p_edist,
+      sid_3p_edist,
   };
 }
 

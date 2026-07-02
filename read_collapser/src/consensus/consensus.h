@@ -1,5 +1,6 @@
 #pragma once
 
+#include <xoos/io/alignment-reader.h>
 #include <xoos/types/float.h>
 #include <xoos/yc-decode/yc-decoder.h>
 
@@ -50,7 +51,7 @@ void UpdateConsensusMetrics(const Clusters& clusters);
 void ClusterAndConsensusSuperRegion(const ReadCollapserOptions& options,
                                     u32 super_region_id,
                                     const SuperRegion& super_region,
-                                    const AlignmentReader& alignment_reader,
+                                    const io::AlignmentReader& alignment_reader,
                                     const AlignmentWriter& alignment_writer,
                                     const GzipFilePtr& fastq_writer,
                                     const RegionLookupTable& region_lookup_table);

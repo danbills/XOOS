@@ -1,5 +1,5 @@
-add_library(xoos_io
-        STATIC
+add_default_library(xoos_io
+        xoos/io/alignment-reader.cpp
         xoos/io/bed-region.cpp
         xoos/io/fasta-reader.cpp
         xoos/io/htslib-util/htslib-ptr.cpp
@@ -32,8 +32,8 @@ target_link_libraries(xoos_io
         PUBLIC
         xoos-htslib::xoos-htslib
         Microsoft.GSL::GSL
-        PRIVATE
         vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
+        PRIVATE
         fmt::fmt
 )
 target_link_xoos_libraries(xoos_io

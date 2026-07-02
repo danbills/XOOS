@@ -1,0 +1,10 @@
+[requires]
+# common
+catch2/3.14.0
+fmt/12.1.0
+
+[options]
+
+[generators]
+CMakeDeps
+CMakeToolchain

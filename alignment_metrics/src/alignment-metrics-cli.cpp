@@ -69,7 +69,7 @@ void AddReadFilterOptions(cli::AppPtr app, const CoverageMetricsOptsPtr& opts) {
                   "Minimum mapping quality. Reads with a mapping quality less than the threshold are not considered "
                   "for coverage metrics, accuracy metrics, and post-filter read metrics.")
       ->default_val(std::to_string(kDefaultMinMapq))
-      ->check(CLI::Range(kDefaultMinMapq, kMaxBaseQuality))
+      ->check(CLI::Range(kMinBaseQuality, kMaxBaseQuality))
       ->group(kOptGroupNameReadFilterOptions);
 }
 
@@ -185,7 +185,7 @@ void AddHpMaskingOption(cli::AppPtr app, const CoverageMetricsOptsPtr& opts) {
                   "Base quality threshold for masking homopolymers for non-duplex dataset or when "
                   "--disable-base-type-decoding is set.")
       ->default_val(std::to_string(kDefaultBaseQualityThresholdForHpMasking))
-      ->check(CLI::Range(kDefaultMinBaseq, kMaxBaseQuality))
+      ->check(CLI::Range(kMinBaseQuality, kMaxBaseQuality))
       ->excludes("--disable-discordant-hp-masking")
       ->group(kOptGroupNameHpMaskingOptions);
 }
@@ -344,83 +344,65 @@ void DefineAllMetricsOptions(cli::AppPtr app, const CoverageMetricsOptsPtr& opts
   AddLegacyOptions(app, opts);
 }
 
-// This adds version and commandline to the comments field of the option
-// This handles parent or subcommands appropriately if available.
-static void AddVersionAndCommandLineComment(const cli::ConstAppPtr& app,
-                                            const CoverageMetricsOptsPtr& opts,
-                                            const std::string& version) {
-  const std::string cli_args = cli::RenderFullCli(app);
-  io::AddVersionAndCommandLineComment(opts->comments, version, cli_args);
-}
-
-static void AddSubcommands(const std::shared_ptr<CLI::App>& app,
-                           CoverageMetricsOptsPtr& opts,
-                           const std::string& version) {
+static void AddSubcommands(const std::shared_ptr<CLI::App>& app, CoverageMetricsOptsPtr& opts) {
   // add coverage metrics subcommand
-  cli::AddSubcommand<AlignmentMetricsOptions>(
-      app.get(),
-      kSubcommandNameCoverageMetrics,
-      DefineCoverageMetricsOptions,
-      opts,
-      RunAlignmentMetrics,
-      kSubcommandDescriptionCoverageMetrics,
-      [&version](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
-        options->metric_types.has_accuracy_metrics = false;
-        options->metric_types.has_coverage_metrics = true;
-        options->metric_types.has_read_metrics = false;
-        AddVersionAndCommandLineComment(app, options, version);
-      })
+  cli::AddSubcommand<AlignmentMetricsOptions>(app.get(),
+                                              kSubcommandNameCoverageMetrics,
+                                              DefineCoverageMetricsOptions,
+                                              opts,
+                                              RunAlignmentMetrics,
+                                              kSubcommandDescriptionCoverageMetrics,
+                                              [](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
+                                                options->metric_types.has_accuracy_metrics = false;
+                                                options->metric_types.has_coverage_metrics = true;
+                                                options->metric_types.has_read_metrics = false;
+                                                options->command_line_info = cli::GetCommandLineInfo(app);
+                                              })
       ->fallthrough();
 
   // add accuracy metrics subcommand
-  cli::AddSubcommand<AlignmentMetricsOptions>(
-      app.get(),
-      kSubcommandNameAccuracyMetrics,
-      DefineAccuracyMetricsOptions,
-      opts,
-      RunAlignmentMetrics,
-      kSubcommandDescriptionAccuracyMetrics,
-      [&version](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
-        options->metric_types.has_accuracy_metrics = true;
-        options->metric_types.has_coverage_metrics = false;
-        options->metric_types.has_read_metrics = false;
-        AddVersionAndCommandLineComment(app, options, version);
-      })
+  cli::AddSubcommand<AlignmentMetricsOptions>(app.get(),
+                                              kSubcommandNameAccuracyMetrics,
+                                              DefineAccuracyMetricsOptions,
+                                              opts,
+                                              RunAlignmentMetrics,
+                                              kSubcommandDescriptionAccuracyMetrics,
+                                              [](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
+                                                options->metric_types.has_accuracy_metrics = true;
+                                                options->metric_types.has_coverage_metrics = false;
+                                                options->metric_types.has_read_metrics = false;
+                                                options->command_line_info = cli::GetCommandLineInfo(app);
+                                              })
       ->fallthrough();
 
   // add read metrics subcommand
-  cli::AddSubcommand<AlignmentMetricsOptions>(
-      app.get(),
-      kSubcommandNameReadMetrics,
-      DefineReadMetricsOptions,
-      opts,
-      RunAlignmentMetrics,
-      kSubcommandDescriptionReadMetrics,
-      [&version](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
-        options->metric_types.has_accuracy_metrics = false;
-        options->metric_types.has_coverage_metrics = false;
-        options->metric_types.has_read_metrics = true;
-        AddVersionAndCommandLineComment(app, options, version);
-      })
+  cli::AddSubcommand<AlignmentMetricsOptions>(app.get(),
+                                              kSubcommandNameReadMetrics,
+                                              DefineReadMetricsOptions,
+                                              opts,
+                                              RunAlignmentMetrics,
+                                              kSubcommandDescriptionReadMetrics,
+                                              [](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
+                                                options->metric_types.has_accuracy_metrics = false;
+                                                options->metric_types.has_coverage_metrics = false;
+                                                options->metric_types.has_read_metrics = true;
+                                                options->command_line_info = cli::GetCommandLineInfo(app);
+                                              })
       ->fallthrough();
 
   // add all metrics subcommand
-  cli::AddSubcommand<AlignmentMetricsOptions>(
-      app.get(),
-      kSubcommandNameAlignmentMetrics,
-      // define options
-      DefineAllMetricsOptions,
-      // shared_ptr
-      opts,
-      // subcommand main
-      RunAlignmentMetrics,
-      kSubcommandDescriptionAlignmentMetrics,
-      [&version](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
-        options->metric_types.has_accuracy_metrics = true;
-        options->metric_types.has_coverage_metrics = true;
-        options->metric_types.has_read_metrics = true;
-        AddVersionAndCommandLineComment(app, options, version);
-      })
+  cli::AddSubcommand<AlignmentMetricsOptions>(app.get(),
+                                              kSubcommandNameAlignmentMetrics,
+                                              DefineAllMetricsOptions,
+                                              opts,
+                                              RunAlignmentMetrics,
+                                              kSubcommandDescriptionAlignmentMetrics,
+                                              [](const cli::ConstAppPtr& app, const CoverageMetricsOptsPtr& options) {
+                                                options->metric_types.has_accuracy_metrics = true;
+                                                options->metric_types.has_coverage_metrics = true;
+                                                options->metric_types.has_read_metrics = true;
+                                                options->command_line_info = cli::GetCommandLineInfo(app);
+                                              })
       ->fallthrough();
 }
 
@@ -428,7 +410,7 @@ int RunAlignmentMetricsApp(int argc, char** argv, const std::string& program_nam
   auto opts = std::make_shared<AlignmentMetricsOptions>();
   const auto app = cli::SetupDefaultCli(program_name, version);
   app->require_subcommand(1);
-  AddSubcommands(app, opts, version);
+  AddSubcommands(app, opts);
   return cli::RunCli(app.get(), argc, argv);
 }
 

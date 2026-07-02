@@ -1,5 +1,4 @@
-add_library(read_collapser_core
-        STATIC
+add_default_library(read_collapser_core
         clustering/cluster-downsample.cpp
         clustering/clustering.cpp
         consensus/base-encoder.cpp
@@ -24,9 +23,45 @@ add_library(read_collapser_core
         util/duplex-util.cpp
         util/read-util.cpp
         util/softclip-util.cpp
-        util/cli-option-util.cpp
         ../external/samtools/bam_cat.c
+        util/read-name-util.cpp
 )
+
+add_default_library(read_collapser_metrics_format_util_core
+        metrics/metrics-format-util.cpp
+)
+
+target_include_directories(read_collapser_metrics_format_util_core SYSTEM INTERFACE .)
+target_include_directories(read_collapser_metrics_format_util_core PRIVATE .)
+
+find_package(fmt REQUIRED)
+target_link_libraries(read_collapser_metrics_format_util_core PRIVATE fmt::fmt)
+target_link_xoos_libraries(read_collapser_metrics_format_util_core
+        PUBLIC
+        types
+)
+
+add_default_library(read_collapser_rescue_secondary_core
+        rescue-secondary/rescue-secondary.cpp
+        rescue-secondary/rescue-secondary-cli.cpp
+        rescue-secondary/rescue-secondary-metrics.cpp
+)
+
+target_include_directories(read_collapser_rescue_secondary_core SYSTEM INTERFACE .)
+target_include_directories(read_collapser_rescue_secondary_core PRIVATE .)
+
+target_link_xoos_libraries(read_collapser_rescue_secondary_core
+        PRIVATE
+        cli
+        error
+        io
+        log
+        util
+)
+
+find_package(vincentlaucsb-csv-parser REQUIRED)
+target_link_libraries(read_collapser_rescue_secondary_core PRIVATE vincentlaucsb-csv-parser::vincentlaucsb-csv-parser)
+target_link_libraries(read_collapser_rescue_secondary_core PRIVATE read_collapser_metrics_format_util_core)
 
 target_include_directories(read_collapser_core SYSTEM INTERFACE .)
 target_include_directories(read_collapser_core PRIVATE .)
@@ -72,3 +107,4 @@ target_link_libraries(read_collapser_core PRIVATE vincentlaucsb-csv-parser::vinc
 
 find_package(ZLIB REQUIRED)
 target_link_libraries(read_collapser_core PRIVATE ZLIB::ZLIB)
+target_link_libraries(read_collapser_core PRIVATE read_collapser_metrics_format_util_core)

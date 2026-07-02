@@ -1,0 +1,34 @@
+graph TD
+    subgraph Inputs["Input Layer"]
+        InputBAM[Input BAM]
+        FASTA[Reference FASTA]
+        RepeatCatalogs[Repeat Catalog]
+    end
+
+    subgraph Setup["Resource Setup Layer"]
+        Contigs[Reference Contigs]
+        Sex[Sample Sex<br/>Predicted or Specified]
+        SampleName[Sample Name<br/>From Options or BAM]
+    end
+
+    subgraph Analysis["Analysis Layer"]
+        Caller1[Call STRs]
+    end
+
+    subgraph Outputs["Output Layer"]
+        VCF[VCF]
+        JSON[JSON]
+        BAM["(optional) BAM"]
+    end
+
+    InputBAM --> Contigs
+    FASTA --> Contigs
+    RepeatCatalogs --> Caller1
+
+    Contigs --> Caller1
+    Sex --> Caller1
+    SampleName --> Caller1
+
+    Caller1 --> VCF
+    Caller1 --> JSON
+    Caller1 --> BAM

@@ -1,0 +1,14 @@
+graph LR
+    subgraph Setup["One-time Setup"]
+        SSM["Create SSM<br/>parameters"] --> TG["Deploy Terraform<br/>module"]
+        TG --> Verify["Verify resources<br/>in AWS Console"]
+    end
+
+    subgraph Configure["Configure pipeline_launcher"]
+        Verify --> JSON["Create env JSON<br/>(S3 bucket, driver queue,<br/>IAM role from TF output)"]
+        JSON --> NFC["Create Nextflow config<br/>(queue routing, resources,<br/>retry strategies)"]
+    end
+
+    subgraph Run["Run Pipelines"]
+        NFC --> Test["xoos run --env ..."]
+    end

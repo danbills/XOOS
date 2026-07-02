@@ -1,7 +1,7 @@
 #pragma once
+#include "adapters/simplex/trim-info-simplex.h"
 #include "io/read-record.h"
 #include "lut-bundle-ys.h"
-#include "trim-info-ys.h"
 #include "trim3p-ys.h"
 #include "trim5p-ys.h"
 
@@ -30,7 +30,7 @@ class DemuxAndTrimYs {
    * @param record The read to be trimmed and assigned to a sample
    * @return A structure containing the determined 5' SID, 3' SID, insert start & end, and assigned sample
    */
-  TrimInfoYs operator()(const FixedReadRecord& record) const;
+  TrimInfoSimplex operator()(const FixedReadRecord& record) const;
 
  private:
   /**
@@ -39,9 +39,10 @@ class DemuxAndTrimYs {
    *
    * @param trim_5p 5' trim results
    * @param trim_3p 3' trim results
+   * @param seq_length Raw read length, used as the untrimmed boundary for discordant reads.
    * @return A structure containing the determined 5' SID, 3' SID, insert start & end, and assigned sample
    */
-  TrimInfoYs Demux(const Trim5pInfoYs& trim_5p, const Trim3pInfoYs& trim_3p) const;
+  TrimInfoSimplex Demux(const Trim5pInfoYs& trim_5p, const Trim3pInfoYs& trim_3p, u32 seq_length) const;
 
   /**
    * Determine if a read should be assigned to a sample, and if so determine which sample. The following criteria is

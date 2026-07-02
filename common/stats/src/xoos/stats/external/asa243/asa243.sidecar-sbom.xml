@@ -1,0 +1,48 @@
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5" version="1">
+	<metadata>
+		<component>
+			<name>asa243</name>
+			<version>31012020</version> <!--using
+			the date as the version-->
+			<hashes>
+				<!--  At a minimum, the SHA-1 sum has must be provided for the file or
+					directory tree named by the "capt:sidecar-relativepath" property below, to
+					ensure integriry. This can be computed with sha1sum on the command line.  -->
+				<hash alg="SHA-1">ded08d0db0198489595448b1d84fc511cdbf82e8</hash>
+			</hashes>
+			<licenses>
+				<!--  List all the licenses that apply to our fork. This means all licenses
+					we must comply with, and in the event we have a choice only those we choose
+					to somply with.  -->
+				<license>
+					<!--  License ID should be one of the SPDX short identifiers: https://spdx.org/licenses/  -->
+					<id>MIT</id>
+					<!--  License link should be to the project website or source code for
+						the specific version we have forked  -->
+					<url>https://people.sc.fsu.edu/~jburkardt/cpp_src/asa243/asa243.html</url>
+				</license>
+			</licenses>
+			<externalReferences>
+				<reference type="website">
+					<url>https://people.sc.fsu.edu/~jburkardt/cpp_src/asa243/asa243.html</url>
+				</reference>
+			</externalReferences>
+			<properties>
+				<!--  The path, relative to the directory containing this sidecar SBOM,
+					where the forked content can be found. Maybe "./" if this file is put in
+					the root directory of a forked repository.  -->
+				<property name="capt:sidecar-relativepath">./asa243.hpp</property>
+				<property name="capt:sidecar-relativepath">./asa243.cpp</property>
+				<!--  The following "forknote" properties are human-readable information
+					about why the fork was created, and how it will be maintained.  -->
+				<property name="capt:sidecar-forknote-reason">Contains the algorithm for CDF of Non-Central
+					Student's T Distribution. The algorithm itself was originally presented in the Journal of
+					Applied Statistics in the FORTRAN language; this repository presents the same algorithm in
+					C++</property>
+				<property name="capt:sidecar-forknote-eol">When we implement our own statistics library</property>
+				<property name="capt:sidecar-forknote-maintenance">We do not expect the code to be updated
+					upstream. The last it was updated was 4 years ago (as of March 2024) in January 2020.</property>
+			</properties>
+		</component>
+	</metadata>
+</bom>

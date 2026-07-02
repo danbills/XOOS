@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include "sequence/matcher/seq-matcher.h"
 
 namespace xoos::demux {
@@ -13,7 +16,7 @@ namespace fs = std::filesystem;
 class LutBundleYs {
  public:
   LutBundleYs(SeqMatcher runway_5p, SeqMatcher sid_5p, SeqMatcher sid_spacer_5p, SeqMatcher sid_3p,
-              SeqMatcher sid_spacer_3p);
+              std::optional<std::string> bait_3p);
 
   const SeqMatcher& Runway5pMatcher() const;
 
@@ -26,8 +29,7 @@ class LutBundleYs {
   const SeqMatcher& Sid3pMatcher() const;
   const BarcodePool& Sid3pPool() const;
 
-  const SeqMatcher& SidSpacer3pMatcher() const;
-  const BarcodePool& SidSpacer3pPool() const;
+  const std::optional<std::string>& Bait3p() const;
 
  private:
   SeqMatcher _runway_5p_matcher;
@@ -35,6 +37,7 @@ class LutBundleYs {
   SeqMatcher _sid_spacer_5p_matcher;
 
   SeqMatcher _sid_3p_matcher;
-  SeqMatcher _sid_spacer_3p_matcher;
+
+  std::optional<std::string> _bait_3p;
 };
 }  // namespace xoos::demux

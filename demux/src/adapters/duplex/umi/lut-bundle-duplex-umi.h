@@ -7,9 +7,9 @@ namespace xoos::demux {
 
 class LutBundleDuplexUmi : public LutBundleDuplexStem {
  public:
-  LutBundleDuplexUmi(SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p, SeqMatcher stop_sequence,
-                     SeqMatcher stem_5p, SeqMatcher stem_3p, SeqMatcher umi_5p, SeqMatcher umi_3p,
-                     SeqMatcher loop_sequence_matcher);
+  LutBundleDuplexUmi(SeqMatcher runway_5p, SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p,
+                     SeqMatcher stop_sequence, SeqMatcher stem_5p, SeqMatcher stem_3p, SeqMatcher umi_5p,
+                     SeqMatcher umi_3p, SeqMatcher loop_sequence_matcher);
 
   // UMI accessors
   const SeqMatcher& Umi5pMatcher() const;

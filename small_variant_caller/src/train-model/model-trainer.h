@@ -27,12 +27,14 @@ class ModelTrainer {
    * @param num_rounds The maximum number of rounds of training.
    * @param var_group Type of variant to train
    * @param output_training_data Write training data to file
+   * @param command_line Command line info for metadata in the training data TSV
    */
   void Train(const fs::path& output_file,
              size_t num_threads,
              u32 num_rounds,
              VariantGroup var_group,
-             const std::optional<fs::path>& output_training_data);
+             const std::optional<fs::path>& output_training_data,
+             const io::CommandLineInfo& command_line);
 
   /**
    * @brief Set up LightGBM scoring column names and categorical names based on the variant type, provided config file

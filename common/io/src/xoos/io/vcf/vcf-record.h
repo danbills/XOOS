@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <htslib/vcf.h>
@@ -61,16 +62,20 @@ class VcfRecord {
 
   template <typename T>
   std::vector<T> GetInfoField(const std::string& field) const;
-  template <typename T>
-  void SetInfoField(const std::string& field, const std::vector<T>& values);
+  void SetInfoField(const std::string& field, const std::vector<f32>& values);
+  void SetInfoField(const std::string& field, const std::vector<s32>& values);
+  void SetInfoField(const std::string& field, const std::vector<std::string>& values);
   void AddInfoFieldFlag(const std::string& field);
   void RemoveInfoFieldFlag(const std::string& field);
 
   template <typename T>
   std::vector<T> GetFormatField(const std::string& field) const;
-  template <typename T>
-  void SetFormatField(const std::string& field, const std::vector<T>& values);
+  void SetFormatField(const std::string& field, const std::vector<f32>& values);
+  void SetFormatField(const std::string& field, const std::vector<s32>& values);
+  void SetFormatField(const std::string& field, const std::vector<const char*>& values);
+  void SetFormatField(const std::string& field, const std::vector<std::string>& values);
   std::string GetGTField() const;
+  std::string GetGTField(s32 sample_index) const;
   void SetGTField(const std::string& value);
   void SetGTField(const std::string& value, s32 sample_index);
 
@@ -81,8 +86,12 @@ class VcfRecord {
   std::optional<f32> GetQuality() const;
   f32 GetQuality(f32 default_value) const;
   void SetQuality(const std::optional<f32>& quality);
+  void SetFilter(const char* filter);
   void SetFilter(const std::string& filter);
+  void SetFilter(std::string_view filter);
+  void AddFilter(const char* filter);
   void AddFilter(const std::string& filter);
+  void AddFilter(std::string_view filter);
   void ClearFilters();
   std::vector<std::string> GetFilters() const;
   VcfRecordPtr Clone(const VcfHeaderPtr& new_header) const;
@@ -94,6 +103,11 @@ class VcfRecord {
   // variables
   BcfHeaderPtr _hdr;
   BcfRecordPtr _record;
-  static constexpr auto kGenotypeRegex = R"(^(\.|\d+)(([/|])(\.|\d+))?$)";
+  static constexpr char kPhasedAlleleSeparator = '|';
+  static constexpr char kUnphasedAlleleSeparator = '/';
+  static constexpr char kMissingAllele = '.';
+  // Matches a VCF GT string: a single allele (`.` or integer), optionally followed by more
+  // alleles joined by `/` (unphased) or `|` (phased), but not a mix of both separators.
+  static constexpr auto kGenotypeRegex = R"(^(?:\.|\d+)(?:(?:/(?:\.|\d+))*|(?:\|(?:\.|\d+))*)$)";
 };
 }  // namespace xoos::io

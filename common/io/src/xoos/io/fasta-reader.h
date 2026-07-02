@@ -26,6 +26,7 @@ class FastaReader {
 
   std::string GetSequence(const std::string& chrom, s64 start, s64 end, bool uppercase = true);
   std::string GetSequence(const std::string& chrom, bool uppercase = true);
+  s64 GetContigLength(const std::string& chrom);
 
   class Iterator {
    public:

@@ -1,5 +1,4 @@
-add_library(pangenome_consensus_caller_core
-        STATIC
+add_default_library(pangenome_consensus_caller_core
         pangenome-consensus-caller-core.cpp
 )
 

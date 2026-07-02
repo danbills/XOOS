@@ -14,25 +14,16 @@ namespace xoos::read_collapser {
 
 /// Unique and reproducible identifier for a cluster.
 struct ClusterId {
-  u32 super_region_id;  /// The id of the super region this cluster belongs to.
-  u32 count;            /// The count of the cluster within the super region.
+  /// The id of the super region this cluster belongs to.
+  u32 super_region_id;
+  /// The count of the cluster within the super region.
+  u32 count;
 
   auto operator<=>(const ClusterId& cluster_id) const = default;
 };
 
 struct ClusterIdHash {
   size_t operator()(const ClusterId& cluster_id) const;
-};
-
-struct UmiPair {
-  Umi umi5p;
-  Umi umi3p;
-
-  auto operator<=>(const UmiPair&) const = default;
-};
-
-struct UmiPairHash {
-  size_t operator()(const UmiPair& umi_pair) const;
 };
 
 struct Cluster {
@@ -48,48 +39,30 @@ using CreateClusterId = std::function<ClusterId()>;
 using Clusters = std::unordered_map<ClusterId, ClusterPtr, ClusterIdHash>;
 
 /**
- * Cluster alignments based on their start and end positions and strand information. This clustering method
- * allows for something we call "drift" which is something we have observed where alignments from the same
- * cluster can have slightly different start and end positions. To address this we allow for a "wiggle room"
- * and further alignments are added to the cluster in recursive manner within the wiggle room threshold.
- * @param [in] wiggle_room The maximum |a1.start - a2.start| + |a1.end - a2.end| for two alignments to be in the same
- * cluster in each recursive step.
- * @param [in] cluster_by_strand If kTogether, alignments from different strands are clustered together. If kSeparate,
- * alignments from different strands are clustered separately.
- * @param [in] create_cluster_id A function that produces a unique cluster id on each invocation.
- * @param [in] alignments The alignments to cluster.
- * @param [out] clusters The clusters produced by clustering the alignments.
- **/
-void ClusterAlignmentsByPosition(u32 wiggle_room,
-                                 bool cluster_by_strand,
-                                 const CreateClusterId& create_cluster_id,
-                                 const vec<AlignmentPtr>& alignments,
-                                 Clusters& clusters);
-
-/**
- * Cluster alignments based on their position and UMI information. This clustering method
- * allows for something we call "drift" which is something we have observed where alignments from the same
- * cluster can have slightly different start and end positions. To address this we allow for a "wiggle room"
- * and further alignments are added to the cluster in recursive manner within the wiggle room threshold.
- * Full alignments are first clustered based on matching UMI and then position.
- * Partial UMI alignments are assigned to clusters based on the nearest position and matching UMI (if exclude partial
- *reads is not enabled). Any remaining unassigned partial UMI alignments are clustered together (if exclude partial
- *reads is not enabled and make clusters of partial reads only is enabled).
- * @param [in] options ReadCollapserOptions containing the cluster by strand, wiggle room, partial read wiggle room,
- * exclude partial reads, and make clusters of partial reads only parameters.
- * @param [in] create_cluster_id A function that produces a unique cluster id on each invocation.
- * @param [in] alignments The alignments to cluster.
- * @param [out] clusters The clusters produced by clustering the alignments.
+ * Cluster reads based on their alignment start and end positions and strand information.
+ * If cluster_by_umi is enabled, the reads are first clustered by UMI and then by position.
+ * This clustering method allows for something we call "drift" which is something we have observed where reads from the
+ * same cluster can have slightly different start and end positions. To address this we allow for a "wiggle room" and
+ * further reads are added to the cluster in recursive manner within the wiggle room threshold.
  *
- * @note This function modifies the input alignments to remove any missing UMI alignments. Any unclustered partial UMI
- * alignments remain in the input alignments.
+ * Full reads are first clustered by position using wiggle_room. Partial reads (IsFivePrimeComplete/
+ * IsThreePrimeComplete) are then assigned to the nearest full-read cluster within
+ * wiggle_room_partial. Remaining unassigned partial reads are optionally clustered into partial-only
+ * clusters if make_clusters_of_partial_reads_only is enabled.
+ *
+ * @param [in] options ReadCollapserOptions containing wiggle_room, wiggle_room_partial, cluster_by_strand,
+ * exclude_partial_reads, and make_clusters_of_partial_reads_only parameters.
+ * @param [in] create_cluster_id A function that produces a unique cluster id on each invocation.
+ * @param [in] reads The reads to cluster. Note that this is a const reference to a vector of AlignmentPtrs,
+ * but the alignments themselves are modified by assigning cluster information to them.
+ * @param [out] clusters The clusters produced by clustering the reads.
  **/
-void ClusterAlignmentsByPositionAndUmi(const ReadCollapserOptions& options,
-                                       const CreateClusterId& create_cluster_id,
-                                       vec<AlignmentPtr>& alignments,
-                                       Clusters& clusters);
+void ClusterReads(const ReadCollapserOptions& options,
+                  const CreateClusterId& create_cluster_id,
+                  const vec<AlignmentPtr>& reads,
+                  Clusters& clusters);
 
-/// Represents the strand of a cluster. A cluster can contain alignments from the forward strand, reverse strand, or
+/// Represents the strand of a cluster. A cluster can contain reads aligned to the forward strand, reverse strand, or
 /// both strands.
 enum class ClusterStrand {
   kFwd,
@@ -97,7 +70,7 @@ enum class ClusterStrand {
   kBoth,
 };
 
-/// Determine the strand of the cluster for this alignment based on the alignment strand and whether clusters are
+/// Determine the strand of the cluster for this read based on the read strand and whether clusters are
 /// separated by strand or not.
 ClusterStrand DetermineClusterStrand(const AlignmentPtr& alignment, bool cluster_by_strand);
 
@@ -121,17 +94,20 @@ struct ClusterCoordHash {
   size_t operator()(const ClusterCoord& coord) const;
 };
 
-/// Represents a partial cluster, which is a cluster that has not yet been fully merged with its neighboring clusters.
-struct PartialCluster {
-  ClusterPtr cluster;  /// The cluster that this partial cluster will ultimately be merged into. Can be nullptr if not
-                       /// yet determined.
+/// Represents a preliminary cluster, which is a cluster that has not yet been fully merged with its neighboring
+/// clusters.
+struct PreliminaryCluster {
+  /**
+   * The cluster that this preliminary cluster will ultimately be merged into. Can be nullptr if not yet determined.
+   */
+  ClusterPtr cluster;
   vec<AlignmentPtr> alignments;
 };
 
-using PartialClusters = std::unordered_map<ClusterCoord, PartialCluster, ClusterCoordHash>;
+using PreliminaryClusters = std::unordered_map<ClusterCoord, PreliminaryCluster, ClusterCoordHash>;
 
-// Represents a cluster and its statistics, used to assign partial UMI alignments to clusters based on the nearest full
-// UMI cluster.
+// Represents a cluster and its statistics, used to assign partial reads to clusters based on the nearest
+// full read cluster.
 struct ClusterPtrAndStats {
   ClusterPtr cluster{};
   ClusterStrand strand{};
@@ -142,37 +118,53 @@ struct ClusterPtrAndStats {
 
 using UmiClusterPtrAndStats = std::unordered_map<Umi, vec<ClusterPtrAndStats>>;
 
-// Represents a UMI and strand pair, used to group unassigned partial alignments by UMI and strand for further
+// Represents a UMI and strand pair, used to group unassigned partial reads by UMI and strand for further
 // clustering.
-struct UmiStrand {
+struct UmiAndStrand {
   Umi umi{};
   ClusterStrand strand{};
 
-  auto operator<=>(const UmiStrand&) const = default;
+  auto operator<=>(const UmiAndStrand&) const = default;
 };
 
-struct UmiStrandHash {
-  size_t operator()(const UmiStrand& umi_strand) const;
+struct UmiAndStrandHash {
+  size_t operator()(const UmiAndStrand& umi_strand) const;
 };
 
-using UnassignedPartialAlignments = std::unordered_map<UmiStrand, vec<AlignmentPtr>, UmiStrandHash>;
+using UnassignedPartialReads = std::unordered_map<UmiAndStrand, vec<AlignmentPtr>, UmiAndStrandHash>;
 
 /**
- * Perform a depth-first search to merge neighboring partial clusters into a single cluster. This function starts from
- * @ref initial_coord and recursively searches for neighboring partial clusters from @ref partial_clusters within the
- * wiggle room and with the same strand. The search continues until the maximum depth is reached or no more neighboring
- * partial clusters are found.
+ * Perform a depth-first search to merge neighboring preliminary clusters into a single cluster. This function starts
+ * from
+ * @ref initial_coord and recursively searches for neighboring preliminary clusters from @ref preliminary_clusters
+ * within the wiggle room and with the same strand. The search continues until the maximum depth is reached or no more
+ * neighboring preliminary clusters are found.
  */
-void DepthFirstClusterSearch(const ClusterCoord& initial_coord,
-                             const PartialCluster& partial_cluster,
-                             PartialClusters& partial_clusters,
-                             u32 wiggle_room,
-                             u32 max_depth);
+void MergePreliminaryClusters(const ClusterCoord& initial_coord,
+                              const PreliminaryCluster& preliminary_cluster,
+                              PreliminaryClusters& preliminary_clusters,
+                              u32 wiggle_room,
+                              u32 max_depth);
 
+/**
+ * @brief Cluster alignments based on UMI (if enabled) and alignment position proximity.
+ * This function takes a range of position-sorted alignments fetched from a given region
+ * from the BAM file and clusters them based on their position and optionally their UMIs
+ * and strand. Only primary alignments are clustered as they represent distinct reads.
+ * Secondary and supplementary alignments are ignored for clustering purposes as they
+ * represent the same read as the primary alignment.
+ *
+ * @param options ReadCollapserOptions containing clustering parameters such as wiggle_room, cluster_by_strand, and
+ *                cluster_by_umi.
+ * @param alignments A vector of AlignmentPtrs representing the alignments to be clustered.
+ *                   These alignments are expected to be sorted by their alignment start position.
+ *                   The alignments are modified in-place to assign cluster information to them as they are clustered.
+ * @param create_cluster_id A function that produces a unique cluster id on each invocation.
+ * @return A map of ClusterId to ClusterPtr representing the resulting clusters after clustering the input alignments.
+ *
+ */
 Clusters ClusterAlignments(const ReadCollapserOptions& options,
                            vec<AlignmentPtr>& alignments,
                            const CreateClusterId& create_cluster_id);
-
-std::tuple<Umi, Umi> ParseUmi(const std::string_view& qname);
 
 }  // namespace xoos::read_collapser

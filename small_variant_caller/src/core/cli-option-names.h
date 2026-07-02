@@ -61,14 +61,17 @@ constexpr auto* kOutputDir = "--output-dir";
 constexpr auto* kVcfOutput = "--vcf-output";
 constexpr auto* kMaxBamRegionSizePerThread = "--max-bam-region-size-per-thread";
 constexpr auto* kMaxVcfRegionSizePerThread = "--max-vcf-region-size-per-thread";
-constexpr auto* kOutputVcfBufferSize = "--output-vcf-buffer-size";
 constexpr auto* kSdChrName = "--sd-chr-name";
 constexpr auto* kParBedX = "--par-bed-x";
 constexpr auto* kParBedY = "--par-bed-y";
+constexpr auto* kOutputShapValueTsv = "--output-shap-value-tsv";
+constexpr auto* kOutputSnvShapValueTsv = "--output-snv-shap-value-tsv";
+constexpr auto* kOutputIndelShapValueTsv = "--output-indel-shap-value-tsv";
 
 // germline and germline-multi-sample specific CLI option names for filter_variants
 constexpr auto* kSnvModel = "--snv-model";
 constexpr auto* kIndelModel = "--indel-model";
+constexpr auto* kRunType = "--run-type";
 
 // tumor-only-te specific CLI option names for filter_variants
 constexpr auto* kBlocklist = "--blocklist";
@@ -85,7 +88,19 @@ constexpr auto* kHotspotMinMlScore = "--hotspot-min-ml-score";
 constexpr auto* kPhased = "--phased";
 
 // tumor-normal-wgs specific CLI option names for filter_variants
+constexpr auto* kSampleType = "--sample-type";
+constexpr auto* kAligner = "--aligner";
 constexpr auto* kSnvMinMlScore = "--snv-min-ml-score";
 constexpr auto* kIndelMinMlScore = "--indel-min-ml-score";
 constexpr auto* kMinTumorSupport = "--min-tumor-support";
+constexpr auto* kMaxNormalSupport = "--max-normal-support";
+constexpr auto* kMinTumorAf = "--min-tumor-af";
+constexpr auto* kMinDpRatio = "--min-dp-ratio";
+constexpr auto* kMaxIndelSize = "--max-indel-size";
+constexpr auto* kDuplexLowbq = "--duplex-lowbq";
+// CLI option names for generate_pon
+constexpr auto* kFeatureList = "--feature-list";
+constexpr auto* kMinDuplexAf = "--min-duplex-af";
+constexpr auto* kMaxDuplexAf = "--max-duplex-af";
+constexpr auto* kMinMapqMean = "--min-mapq-mean";
 }  // namespace xoos::svc::cli_opt_name

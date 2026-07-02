@@ -29,7 +29,7 @@ struct BaseLevelAccuracySummary {
   u64 positions_skipped_due_to_high_alt_allele_fraction{};
 
   static std::vector<std::string> GetHeaders();
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   BaseLevelAccuracySummary& operator+=(const BaseLevelAccuracySummary& other);
   BaseLevelAccuracySummary& operator+=(const CountsByErrorTypeAndReadProperty<u32>& combined_stats);

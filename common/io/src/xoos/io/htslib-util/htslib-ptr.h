@@ -2,7 +2,9 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <type_traits>
 
+#include <htslib/bgzf.h>
 #include <htslib/faidx.h>
 #include <htslib/sam.h>
 
@@ -77,5 +79,18 @@ struct HtsRegListDeleter {
 };
 
 using HtsRegListPtr = std::unique_ptr<hts_reglist_t, HtsRegListDeleter>;
+
+struct BamPlpDeleter {
+  void operator()(bam_plp_t p);
+};
+
+using BamPlpPtr = std::unique_ptr<std::remove_pointer_t<bam_plp_t>, BamPlpDeleter>;
+
+struct BgzfDeleter {
+  void operator()(BGZF* f);
+};
+
+/// Owning smart pointer for a BGZF handle. Calls bgzf_close on destruction.
+using BgzfPtr = std::unique_ptr<BGZF, BgzfDeleter>;
 
 }  // namespace xoos::io

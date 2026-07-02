@@ -85,6 +85,50 @@ std::vector<BedRegion> ParseBedFile(const std::string& bed_file_name) {
 }
 
 /**
+ * Same logic as ParseBedFile, except also record additional columns from the fourth column onward in the bed file and
+ * store them in the `data` field of BedRegion.
+ */
+std::vector<BedRegion> ParseBedFileWithExtraColumns(const std::string& bed_file_name) {
+  // since a BED file is a specialized TSV we can configure
+  // a standard CSV parser to read a BED file.
+  const csv::CSVFormat format = csv::CSVFormat().delimiter('\t').no_header().trim({' '});
+  // if the file is empty, the reader will throw an error so we have to return an empty bed file first
+  if (fs::file_size(bed_file_name) == 0) {
+    return {};
+  }
+
+  csv::CSVReader reader(bed_file_name, format);
+
+  std::vector<BedRegion> regions;
+  for (const auto& row : reader) {
+    auto chrom = row[0].get<std::string>();
+    // skip two special cases which are used to configure UCSC genome browser
+    if (chrom.starts_with("browser") || chrom.starts_with("track") || chrom.starts_with("#")) {
+      continue;
+    }
+    if (row.size() < 4) {
+      throw std::runtime_error(
+          "BED file must have at least 4 columns in order to additionally parse data from the fourth column onward");
+    }
+    if (row[1].is_str() || row[2].is_str()) {
+      throw std::runtime_error("BED file must have numeric start and end columns");
+    }
+    if (row[1].get<s64>() < 0 || row[2].get<s64>() < 0) {
+      throw std::runtime_error("BED file must have non-negative start and end columns");
+    }
+    if (row[1].get<s64>() >= row[2].get<s64>()) {
+      throw std::runtime_error("BED file must have start < end");
+    }
+    std::vector<std::string> data;
+    for (size_t i = 3; i < row.size(); ++i) {
+      data.push_back(row[i].get<std::string>());
+    }
+    regions.emplace_back(chrom, row[1].get<s64>(), row[2].get<s64>(), data);
+  }
+  return regions;
+}
+
+/**
  * Partition the regions into smaller regions of size region_size, this is done to
  * achieve better parallelism when computing the coverage histogram. The regions are fixed size
  * except for the last region which may be limited by reaching the end of the original region.

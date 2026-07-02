@@ -61,7 +61,7 @@ struct CoverageDistributionSummary {
   std::optional<std::map<u64, u64>> concordant_duplex_coverage_cutoff_map;
 
   std::vector<std::string> GetHeaders() const;
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   bool operator==(const CoverageDistributionSummary& other) const = default;
 };

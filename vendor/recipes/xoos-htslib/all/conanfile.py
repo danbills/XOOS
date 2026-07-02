@@ -17,13 +17,13 @@ class htslibRecipe(ConanFile):
     default_options = {"with_zlibng": False}
 
     def requirements(self):
-        self.requires("libdeflate/1.22")
+        self.requires("libdeflate/1.25")
         self.requires(
             "bzip2/1.0.8", options={"shared": False, "build_executable": False}
         )
         if self.options.with_zlibng:
             self.requires(
-                "zlib-ng/2.2.2", options={"zlib_compat": True, "shared": False}
+                "zlib-ng/2.3.3", options={"zlib_compat": True, "shared": False}
             )
         else:
             self.requires("zlib/[>=1.2.11 <2]")

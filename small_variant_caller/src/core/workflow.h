@@ -6,8 +6,10 @@ enum class Workflow {
   kGermline,
   kGermlineMultiSample,
   kTumorOnlyTe,
+  kTumorOnlyWgs,
   kTumorNormalWgs,
   kGermlineTagging,
+  kPanelOfNormals,
   kCustom
 };
 

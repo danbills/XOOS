@@ -8,46 +8,17 @@ using cli::AddOptionalEnumOption;
 using cli::AddThreadCountOption;
 using enum Workflow;
 
-constexpr std::array kSupportedWorkflows = {
-    kGermline, kGermlineMultiSample, kTumorOnlyTe, kTumorNormalWgs, kGermlineTagging, kCustom};
+constexpr std::array kSupportedWorkflows = {kGermline,
+                                            kGermlineMultiSample,
+                                            kTumorOnlyTe,
+                                            kTumorOnlyWgs,
+                                            kTumorNormalWgs,
+                                            kGermlineTagging,
+                                            kPanelOfNormals,
+                                            kCustom};
 
 // CLI option default values
 constexpr auto* kDefaultBamFeaturesFileName = "bam_features.txt";
-
-/**
- * @brief Helper function to define CLI options for the main application.
- * These options are either required or important in this submodule, or they are common to all other submodules in SVC.
- * @param app Main application pointer where CLI options will be defined.
- * @param params Shared pointer to CLI parameters to store parsed option values
- */
-static void AddMainOptions(CLI::App* const app, const ComputeBamFeaturesCliParamsPtr& params) {
-  AddWarnAsErrorOption(app);
-
-  AddThreadCountOption(app, cli_opt_name::kThreads, params->threads);
-
-  app->add_option(cli_opt_name::kConfig, params->config_file, "Path to config JSON file");
-
-  auto* const bam_opt = app->add_option(cli_opt_name::kBamInput,
-                                        params->bam_input,
-                                        "Path(s) to input BAM file(s), produced by GATK HaplotypeCaller/Mutect2")
-                            ->required();
-  CheckIndexedBamFile(bam_opt);
-
-  auto* const genome_opt =
-      app->add_option(cli_opt_name::kGenome, params->genome, "Path to indexed FASTA file for reference genome")
-          ->required();
-  CheckIndexedFastaFile(genome_opt);
-
-  auto* const regions_opt = app->add_option_function<fs::path>(
-      cli_opt_name::kTargetRegions,
-      [&params](const fs::path& value) { params->bed_regions = GetBedRegions(value); },
-      "Path to BED file for 0-based target regions");
-  CheckBedFile(regions_opt);
-
-  app->add_option(cli_opt_name::kOutputFile, params->output_file, "Path to output features file")
-      ->default_val(kDefaultBamFeaturesFileName)
-      ->check(CLI::NonexistentPath);
-}
 
 /**
  * @brief Helper function to add core CLI options for subcommands. CLI options added here are common across all
@@ -55,7 +26,34 @@ static void AddMainOptions(CLI::App* const app, const ComputeBamFeaturesCliParam
  * @param sub Subcommand application pointer where CLI options are to be added
  * @param params Shared pointer to CLI parameters to store parsed option values
  */
-static void AddCoreOptions(CLI::App* const sub, const ComputeBamFeaturesCliParamsPtr& params) {
+static void AddCommonOptions(CLI::App* const sub, const ComputeBamFeaturesCliParamsPtr& params) {
+  AddWarnAsErrorOption(sub);
+
+  AddThreadCountOption(sub, cli_opt_name::kThreads, params->threads);
+
+  sub->add_option(cli_opt_name::kConfig, params->config_file, "Path to config JSON file");
+
+  auto* const bam_opt = sub->add_option(cli_opt_name::kBamInput,
+                                        params->bam_input,
+                                        "Path(s) to input BAM file(s), produced by GATK HaplotypeCaller/Mutect2")
+                            ->required();
+  CheckIndexedBamFile(bam_opt);
+
+  auto* const genome_opt =
+      sub->add_option(cli_opt_name::kGenome, params->genome, "Path to indexed FASTA file for reference genome")
+          ->required();
+  CheckIndexedFastaFile(genome_opt);
+
+  auto* const regions_opt = sub->add_option_function<fs::path>(
+      cli_opt_name::kTargetRegions,
+      [&params](const fs::path& value) { params->bed_regions = GetBedRegions(value); },
+      "Path to BED file for 0-based target regions");
+  CheckBedFile(regions_opt);
+
+  sub->add_option(cli_opt_name::kOutputFile, params->output_file, "Path to output features file")
+      ->default_val(kDefaultBamFeaturesFileName)
+      ->check(CLI::NonexistentPath);
+
   sub->add_option(
          cli_opt_name::kMaxRegionSizePerThread, params->max_region_size_per_thread, "Maximum region size per thread")
       ->default_val(kDefaultMaxBamRegionSizePerThread)
@@ -74,15 +72,13 @@ static void AddTumorNormalWgsSpecificOptions(const CLI::App* const app, const Co
 }
 
 void compute_bam_features::DefineOptions(CLI::App* const app, ComputeBamFeaturesCliParamsPtr& params) {
-  AddMainOptions(app, params);
-
   // Add a subcommand for each workflow
   for (const Workflow workflow : kSupportedWorkflows) {
     const std::string name = enum_util::FormatEnumName(workflow);
     const std::string desc = fmt::format("Compute BAM features for the {} workflow", name);
     CLI::App* const sub = app->add_subcommand(name, desc)->fallthrough();
     // Do not apply force_callback() to subcommand options to avoid overwriting params set by other subcommands
-    AddCoreOptions(sub, params);
+    AddCommonOptions(sub, params);
     const auto defaults = SVCConfig(workflow);
     AddSharedOptions(sub, params, defaults);
   }
@@ -90,12 +86,14 @@ void compute_bam_features::DefineOptions(CLI::App* const app, ComputeBamFeatures
 
   AddTumorNormalWgsSpecificOptions(app, params);
 
-  // hide the `germline-tagging` subcommand by assigning it to an empty string group
+  // hide subcommands not yet ready for users by assigning them to an empty string group
   app->get_subcommand(enum_util::FormatEnumName(kGermlineTagging))->group("");
+  app->get_subcommand(enum_util::FormatEnumName(kTumorOnlyWgs))->group("");
+  app->get_subcommand(enum_util::FormatEnumName(kPanelOfNormals))->group("");
 }
 
 void compute_bam_features::PreCallback(const cli::ConstAppPtr app, const ComputeBamFeaturesCliParamsPtr& params) {
-  params->command_line = GetCommandLineInfo(app);
+  params->command_line = cli::GetCommandLineInfo(app);
 
   // Check which subcommand was used, set workflow and config accordingly, and apply config defaults as needed
   for (const Workflow workflow : kSupportedWorkflows) {

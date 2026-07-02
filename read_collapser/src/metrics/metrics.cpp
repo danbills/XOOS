@@ -2,33 +2,38 @@
 
 #include <fstream>
 
+#include <core/read-collapser-options.h>
+
 #include <csv.hpp>
 
 #include <xoos/io/metadata-util.h>
 #include <xoos/types/float.h>
 
+#include "metrics/metrics-format-util.h"
 #include "xoos/log/logging.h"
 
 namespace xoos::read_collapser {
 
 // Overload the += operator to add two Metrics objects together.
 Metrics& operator+=(Metrics& lhs, const Metrics& rhs) {
-  lhs.input_reads += rhs.input_reads;
-  lhs.discarded_missing_umi_reads += rhs.discarded_missing_umi_reads;
-  lhs.discarded_low_mapq_reads += rhs.discarded_low_mapq_reads;
-  lhs.discarded_by_flags_reads += rhs.discarded_by_flags_reads;
-  lhs.discarded_high_discordant_duplex_percentage_reads += rhs.discarded_high_discordant_duplex_percentage_reads;
-  lhs.discarded_total_reads += rhs.discarded_total_reads;
+  lhs.input_records += rhs.input_records;
+  lhs.discarded_missing_umi_records += rhs.discarded_missing_umi_records;
+  lhs.discarded_low_mapq_records += rhs.discarded_low_mapq_records;
+  lhs.discarded_by_flags_records += rhs.discarded_by_flags_records;
+  lhs.discarded_high_discordant_duplex_percentage_records += rhs.discarded_high_discordant_duplex_percentage_records;
+  lhs.discarded_total_records += rhs.discarded_total_records;
+  lhs.rescued_secondary_alignments += rhs.rescued_secondary_alignments;
   lhs.unmapped_reads += rhs.unmapped_reads;
   lhs.unclustered_partial_reads += rhs.unclustered_partial_reads;
-  lhs.unclustered_supplementary_reads += rhs.unclustered_supplementary_reads;
-  lhs.unclustered_secondary_reads += rhs.unclustered_secondary_reads;
+  lhs.unclustered_supplementary_alignments += rhs.unclustered_supplementary_alignments;
+  lhs.unclustered_secondary_alignments += rhs.unclustered_secondary_alignments;
   lhs.clustering_input_reads += rhs.clustering_input_reads;
   lhs.clustering_reads += rhs.clustering_reads;
   lhs.clustering_full_reads += rhs.clustering_full_reads;
   lhs.clustering_partial_reads += rhs.clustering_partial_reads;
   lhs.clustering_unclustered_partial_reads += rhs.clustering_unclustered_partial_reads;
   lhs.duplicate_reads += rhs.duplicate_reads;
+  lhs.duplicate_supplementary_alignments += rhs.duplicate_supplementary_alignments;
   lhs.unclustered_reads += rhs.unclustered_reads;
   lhs.total_clusters += rhs.total_clusters;
   lhs.singleton_clusters += rhs.singleton_clusters;
@@ -66,22 +71,24 @@ Metrics& operator+=(Metrics& lhs, const Metrics& rhs) {
 
 // Reset the metrics to their initial state.
 void Metrics::Reset() {
-  input_reads = 0;
-  discarded_missing_umi_reads = 0;
-  discarded_low_mapq_reads = 0;
-  discarded_by_flags_reads = 0;
-  discarded_high_discordant_duplex_percentage_reads = 0;
-  discarded_total_reads = 0;
+  input_records = 0;
+  discarded_missing_umi_records = 0;
+  discarded_low_mapq_records = 0;
+  discarded_by_flags_records = 0;
+  discarded_high_discordant_duplex_percentage_records = 0;
+  discarded_total_records = 0;
+  rescued_secondary_alignments = 0;
   unmapped_reads = 0;
   unclustered_partial_reads = 0;
-  unclustered_supplementary_reads = 0;
-  unclustered_secondary_reads = 0;
+  unclustered_supplementary_alignments = 0;
+  unclustered_secondary_alignments = 0;
   clustering_input_reads = 0;
   clustering_reads = 0;
   clustering_full_reads = 0;
   clustering_partial_reads = 0;
   clustering_unclustered_partial_reads = 0;
   duplicate_reads = 0;
+  duplicate_supplementary_alignments = 0;
   unclustered_reads = 0;
   total_clusters = 0;
   singleton_clusters = 0;
@@ -126,35 +133,6 @@ void Metrics::UpdateClusterSizeHistogram(const u64 cluster_size,
       return;
     }
   }
-}
-
-// helper function to calculate percentage in appropriate string format
-// must use stringstream to get the correct precision
-std::string CalculatePercentage(u64 value, u64 total, u8 precision = 2) {
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(precision) << static_cast<f64>(value) / static_cast<f64>(total) * 100.0;
-  return ss.str();
-}
-
-// helper function to format the row for the tsv output
-vec<std::string> FormatRow(const std::string& metric_name,
-                           const u64 value,
-                           const u64 denominator,
-                           const std::string& denominator_name,
-                           const bool metric_not_na = true) {
-  if (metric_not_na) {
-    vec<std::string> output{metric_name, std::to_string(value)};
-    // add the percentage if there is a valid denominator, otherwise add kNA
-    if (denominator_name != kNA && denominator != 0) {
-      output.emplace_back(CalculatePercentage(value, denominator));
-    } else {
-      output.push_back(kNA);
-    }
-    // add the denominator name
-    output.push_back(denominator_name);
-    return output;
-  }
-  return {metric_name, kNA, kNA, denominator_name};
 }
 
 // helper function to calculate a percentage histogram by dividing the cluster_sizes histograms specified by the
@@ -205,33 +183,43 @@ histogram::Histogram<f64> CalculatePercentageHistogram(const histogram::Histogra
 
 // Write the summary statistics to a TSV file.
 void Metrics::WriteSummaryStatsToTsv(const fs::path& output,
-                                     const io::Comments& comments,
+                                     const io::CommandLineInfo& command_line_info,
                                      const ReadCollapserMode use_case,
-                                     const bool cluster_by_umi) const {
+                                     const ReadCollapserOptions& options) const {
   auto out = std::ofstream{output};
   auto writer = csv::make_tsv_writer_buffered(out);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(out, command_line_info);
 
   // write header
   writer << vec<std::string>{"metric_name", "value", "percentage", "denominator"};
 
   // write data
-  writer << FormatRow("input_reads", input_reads, 0, kNA);
-  // If umi, discarded_missing_umi_reads metric value will be applicable
+  writer << FormatRow("input_records", input_records, 0, kNA);
+  // If umi, discarded_missing_umi_records metric value will be applicable
+  writer << FormatRow("discarded_missing_umi_records",
+                      discarded_missing_umi_records,
+                      input_records,
+                      "input_records",
+                      options.cluster_by_umi);
+  writer << FormatRow("discarded_low_mapq_records", discarded_low_mapq_records, input_records, "input_records");
+  writer << FormatRow("discarded_by_flags_records", discarded_by_flags_records, input_records, "input_records");
+  writer << FormatRow("discarded_high_discordant_duplex_percentage_records",
+                      discarded_high_discordant_duplex_percentage_records,
+                      input_records,
+                      "input_records");
+  writer << FormatRow("discarded_total_records", discarded_total_records, input_records, "input_records");
+  writer << FormatRow("rescued_secondary_alignments",
+                      rescued_secondary_alignments,
+                      input_records,
+                      "input_records",
+                      use_case == ReadCollapserMode::kMarkDuplicate);
+  writer << FormatRow("unmapped_reads", unmapped_reads, input_records, "input_records");
+  writer << FormatRow("unclustered_partial_reads", unclustered_partial_reads, input_records, "input_records");
   writer << FormatRow(
-      "discarded_missing_umi_reads", discarded_missing_umi_reads, input_reads, "input_reads", cluster_by_umi);
-  writer << FormatRow("discarded_low_mapq_reads", discarded_low_mapq_reads, input_reads, "input_reads");
-  writer << FormatRow("discarded_by_flags_reads", discarded_by_flags_reads, input_reads, "input_reads");
-  writer << FormatRow("discarded_high_discordant_duplex_percentage_reads",
-                      discarded_high_discordant_duplex_percentage_reads,
-                      input_reads,
-                      "input_reads");
-  writer << FormatRow("discarded_total_reads", discarded_total_reads, input_reads, "input_reads");
-  writer << FormatRow("unmapped_reads", unmapped_reads, input_reads, "input_reads");
-  writer << FormatRow("unclustered_partial_reads", unclustered_partial_reads, input_reads, "input_reads");
-  writer << FormatRow("unclustered_supplementary_reads", unclustered_supplementary_reads, input_reads, "input_reads");
-  writer << FormatRow("unclustered_secondary_reads", unclustered_secondary_reads, input_reads, "input_reads");
-  writer << FormatRow("clustering_input_reads", clustering_input_reads, input_reads, "input_reads");
+      "unclustered_supplementary_alignments", unclustered_supplementary_alignments, input_records, "input_records");
+  writer << FormatRow(
+      "unclustered_secondary_alignments", unclustered_secondary_alignments, input_records, "input_records");
+  writer << FormatRow("clustering_input_reads", clustering_input_reads, input_records, "input_records");
   writer << FormatRow("clustering_reads", clustering_reads, 0, kNA);
   writer << FormatRow("clustering_full_reads", clustering_full_reads, clustering_reads, "clustering_reads");
   writer << FormatRow("clustering_partial_reads", clustering_partial_reads, clustering_reads, "clustering_reads");
@@ -240,7 +228,12 @@ void Metrics::WriteSummaryStatsToTsv(const fs::path& output,
                       clustering_reads,
                       "clustering_reads");
   writer << FormatRow("duplicate_reads", duplicate_reads, clustering_input_reads, "clustering_input_reads");
-  writer << FormatRow("unclustered_reads", unclustered_reads, input_reads, "input_reads");
+  writer << FormatRow("duplicate_supplementary_alignments",
+                      duplicate_supplementary_alignments,
+                      unclustered_supplementary_alignments,
+                      "unclustered_supplementary_alignments",
+                      use_case == ReadCollapserMode::kMarkDuplicate && options.mark_supplementary_alignments);
+  writer << FormatRow("unclustered_reads", unclustered_reads, input_records, "input_records");
   writer << FormatRow("total_clusters", total_clusters, 0, kNA);
   writer << FormatRow("singleton_clusters", singleton_clusters, total_clusters, "total_clusters");
   writer << FormatRow("full_read_clusters", full_read_clusters, total_clusters, "total_clusters");
@@ -330,7 +323,8 @@ void Metrics::WriteSummaryStatsToTsv(const fs::path& output,
 
 // Write the cluster size histograms to a TSV file. Reformat the data to histograms of type double to permit percentage
 // output.
-void Metrics::WriteClusterSizeHistogramsToTsv(const fs::path& output, const io::Comments& comments) const {
+void Metrics::WriteClusterSizeHistogramsToTsv(const fs::path& output,
+                                              const io::CommandLineInfo& command_line_info) const {
   vec<std::string> output_histogram_headers{"total_clusters",
                                             "forward_strand_clusters",
                                             "reverse_strand_clusters",
@@ -369,17 +363,18 @@ void Metrics::WriteClusterSizeHistogramsToTsv(const fs::path& output, const io::
     }
   }
   Logging::Info("Writing cluster size histograms to TSV file: {}", output.string());
-  histogram::WriteHistograms(output_histograms,
-                             output,
-                             "cluster_sizes",
-                             histogram::HistogramBinOutput::kOmitFirstBinAndMaxLastBinWithOutlier,
-                             kClusterSizesPrecision,
-                             comments);
+  histogram::WriteHistogramsToTsv(output_histograms,
+                                  output,
+                                  "cluster_sizes",
+                                  histogram::HistogramBinOutput::kOmitFirstBinAndMaxLastBinWithOutlier,
+                                  kClusterSizesPrecision,
+                                  command_line_info);
 }
 
 // Write the cluster size histogram summaries to a TSV file. This will calculate the summary statistics for each
 // histogram that is not a read count.
-void Metrics::WriteClusterSizeHistogramSummariesToTsv(const fs::path& output, const io::Comments& comments) const {
+void Metrics::WriteClusterSizeHistogramSummariesToTsv(const fs::path& output,
+                                                      const io::CommandLineInfo& command_line_info) const {
   histogram::HistogramSummaries<u64> summary_histograms;
   for (auto& [name, histogram] : cluster_sizes) {
     // Only calculate summary for histograms that are stats of clusters
@@ -388,19 +383,17 @@ void Metrics::WriteClusterSizeHistogramSummariesToTsv(const fs::path& output, co
     }
     summary_histograms.emplace_back(name, histogram::CalculateHistogramSummary(histogram));
   }
-  histogram::WriteSummaryHistograms(summary_histograms, output, histogram::kDefaultPercentiles, {}, true, comments);
+  histogram::WriteSummaryHistogramsToTsv(
+      summary_histograms, output, histogram::kDefaultPercentiles, {}, true, command_line_info);
 }
 
 void Metrics::WriteAllMetricsToTsv(const fs::path& output_dir,
                                    const ReadCollapserMode use_case,
-                                   const bool cluster_by_umi,
-                                   const std::string& version,
-                                   const std::string& command_line) const {
-  io::Comments comments;
-  io::AddVersionAndCommandLineComment(comments, version, command_line);
-  WriteSummaryStatsToTsv(output_dir / "summary_stats.tsv", comments, use_case, cluster_by_umi);
-  WriteClusterSizeHistogramSummariesToTsv(output_dir / "cluster_size_distribution_summary.tsv", comments);
-  WriteClusterSizeHistogramsToTsv(output_dir / "cluster_size_distributions.tsv", comments);
+                                   const ReadCollapserOptions& options,
+                                   const io::CommandLineInfo& command_line_info) const {
+  WriteSummaryStatsToTsv(output_dir / "summary_stats.tsv", command_line_info, use_case, options);
+  WriteClusterSizeHistogramSummariesToTsv(output_dir / "cluster_size_distribution_summary.tsv", command_line_info);
+  WriteClusterSizeHistogramsToTsv(output_dir / "cluster_size_distributions.tsv", command_line_info);
 }
 
 thread_local concurrent::EnumerableThreadLocal<Metrics> ConcurrentMetrics::metrics{std::make_shared<Metrics>()};

@@ -1,4 +1,4 @@
-# Germline Small Variant Calling Workflow for SBX Duplex Data
+# Germline Small Variant Calling Workflow for SBX Duplex
 
 ## Overview
 

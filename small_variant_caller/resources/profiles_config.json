@@ -168,6 +168,7 @@
       "min_dist": 2,
       "max_variants_per_read": 0,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "include",
       "min_family_size": 1,
       "filter_homopolymer": "alignment-end",
       "min_homopolymer_length": 4,
@@ -198,7 +199,9 @@
       "iterations": 0,
       "snv_min_ml_score": 0,
       "indel_min_ml_score":  0,
-      "min_tumor_support": 0
+      "min_tumor_support": 0,
+      "max_indel_size": 0,
+      "min_dp_ratio": 0
     },
     "germline-multi-sample": {
       "workflow": "germline-multi-sample",
@@ -368,6 +371,7 @@
       "min_dist": 2,
       "max_variants_per_read": 0,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "include",
       "min_family_size": 1,
       "filter_homopolymer": "alignment-end",
       "min_homopolymer_length": 4,
@@ -398,7 +402,9 @@
       "iterations": 0,
       "snv_min_ml_score": 0,
       "indel_min_ml_score":  0,
-      "min_tumor_support": 0
+      "min_tumor_support": 0,
+      "max_indel_size": 0,
+      "min_dp_ratio": 0
     },
     "tumor-only-te": {
       "workflow": "tumor-only-te",
@@ -420,6 +426,7 @@
       "min_dist": 0,
       "max_variants_per_read": 10,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "exclude",
       "min_family_size": 3,
       "filter_homopolymer": "none",
       "min_homopolymer_length": 7,
@@ -448,7 +455,9 @@
       "snv_model_lgbm_prediction_params" : "",
       "indel_model_lgbm_prediction_params" : "",
       "model_lgbm_params": "objective=binary boosting=gbdt learning_rate=0.01 seed=1238845 num_leaves=3 num_classes=1",
-      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true"
+      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true",
+      "max_indel_size": 0,
+      "min_dp_ratio": 0
     },
     "tumor-normal-wgs": {
       "workflow": "tumor-normal-wgs",
@@ -462,7 +471,7 @@
         "tumor_alignmentbias","context"
       ],
       "vcf_feature_names": ["chrom", "pos", "ref", "alt", "tumor_dp", "normal_dp", "nalod", "nlod", "tlod", "mpos", "popaf", "hapcomp", "hapdom",
-        "ru", "rpa_ref", "rpa_alt", "subtype_index", "variant_type", "uniq_3mers", "uniq_4mers", "uniq_5mers", "uniq_6mers",
+        "str", "ru", "rpa_ref", "rpa_alt", "subtype_index", "variant_type", "uniq_3mers", "uniq_4mers", "uniq_5mers", "uniq_6mers",
         "pre_2bp_context", "post_2bp_context", "homopolymer", "direpeat", "trirepeat", "quadrepeat"
       ],
       "scoring_names": ["nalod", "nlod", "tlod", "mpos", "popaf", "hapcomp", "hapdom", "str", "ru", "rpa_ref", "rpa_alt", "subtype_index", "variant_type", "uniq_3mers", "uniq_4mers", "uniq_5mers", "uniq_6mers", "pre_2bp_context", "post_2bp_context", "homopolymer", "direpeat", "trirepeat", "quadrepeat", "tumor_support", "tumor_ref_support", "tumor_distance_mean", "tumor_mapq_mean", "tumor_baseq_mean", "normal_support", "normal_ref_support", "normal_distance_mean", "normal_mapq_mean", "normal_baseq_mean", "mapq_mean", "mapq_min", "mapq_lt60_ratio", "mapq_lt40_ratio", "mapq_lt30_ratio", "mapq_lt20_ratio", "ref_mapq_mean", "ref_mapq_min", "ref_mapq_lt60_ratio", "ref_mapq_lt40_ratio", "ref_mapq_lt30_ratio", "ref_mapq_lt20_ratio", "baseq_mean", "baseq_min", "ref_baseq_mean", "distance_mean" ,"ref_distance_mean", "tumor_duplex_af" ,"normal_duplex_af", "bam_tn_af_ratio", "tumor_alignmentbias", "context"],
@@ -476,6 +485,7 @@
       "min_dist": 2,
       "max_variants_per_read": 0,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "include",
       "min_family_size": 2,
       "filter_homopolymer": "none",
       "min_homopolymer_length": 7,
@@ -490,7 +500,7 @@
       "hotspot_min_ml_score": 0.01,
       "phased": false,
       "use_vcf_features": true,
-      "iterations": 3000,
+      "iterations": 6000,
       "snv_iterations": 0,
       "indel_iterations": 0,
       "normalize_features": "none",
@@ -499,12 +509,86 @@
       "snv_min_ml_score": 0.03,
       "indel_min_ml_score":  0.008,
       "min_tumor_support": 1,
+      "max_normal_support": 2,
+      "min_tumor_af": 0.05,
+      "max_indel_size": 29,
+      "min_dp_ratio": 0.15,
       "snv_model_lgbm_params": "",
       "indel_model_lgbm_params": "",
       "snv_model_lgbm_prediction_params" : "",
       "indel_model_lgbm_prediction_params" : "",
       "model_lgbm_params": "objective=binary boosting=gbdt learning_rate=0.005 seed=1238845 num_classes=1",
-      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845"
+      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845",
+      "model_thresholds": {
+        "ffpe-bwa": {
+          "snv_min_ml_score": 0.533341,
+          "indel_min_ml_score": 0.0493952
+        },
+        "cell-line-bwa": {
+          "snv_min_ml_score": 0.501115,
+          "indel_min_ml_score": 0.3438547
+        }
+      }
+    },
+    "tumor-only-wgs": {
+      "workflow": "tumor-only-wgs",
+      "n_classes": 1,
+      "bam_feature_names": [
+        "chrom", "pos", "ref", "alt",
+        "support", "support_reverse", "alignmentbias",
+        "ref_support",
+        "mapq_mean", "mapq_min",
+        "mapq_lt60_ratio", "mapq_lt40_ratio", "mapq_lt30_ratio", "mapq_lt20_ratio",
+        "ref_mapq_mean", "ref_mapq_min",
+        "ref_mapq_lt60_ratio", "ref_mapq_lt40_ratio", "ref_mapq_lt30_ratio", "ref_mapq_lt20_ratio",
+        "baseq_mean", "baseq_min", "ref_baseq_mean",
+        "distance_mean", "ref_distance_mean",
+        "duplex_af", "duplex", "duplex_lowbq",
+        "simplex", "nonduplex",
+        "strandbias", "plusonly", "minusonly",
+        "weighted_depth", "weightedscore",
+        "familysize_sum", "familysize_mean",
+        "context", "subtype_index"
+      ],
+      "vcf_feature_names": [
+        "chrom", "pos", "ref", "alt",
+        "variant_type",
+        "tlod", "mpos",
+        "pre_2bp_context", "post_2bp_context",
+        "homopolymer", "direpeat", "trirepeat", "quadrepeat",
+        "uniq_3mers", "uniq_4mers", "uniq_5mers", "uniq_6mers",
+        "popaf",
+        "ref_ad", "alt_ad", "alt_ad2",
+        "ref_ad_af", "alt_ad_af", "alt_ad2_af",
+        "variant_density",
+        "hapcomp", "hapdom",
+        "ru", "rpa_ref", "rpa_alt", "str", "gc_content"
+      ],
+      "scoring_names": [],
+      "categorical_names": [],
+      "snv_scoring_names": [],
+      "snv_categorical_names": [],
+      "indel_scoring_names": [],
+      "indel_categorical_names": [],
+      "min_mapq": 1,
+      "min_bq": 23,
+      "min_dist": 2,
+      "max_variants_per_read": 0,
+      "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "include",
+      "min_family_size": 2,
+      "filter_homopolymer": "none",
+      "min_homopolymer_length": 7,
+      "sequencing_protocol": "duplex",
+      "use_vcf_features": true,
+      "decode_yc": "none",
+      "min_base_type": "concordant",
+      "snv_model_lgbm_params": "",
+      "indel_model_lgbm_params": "",
+      "snv_model_lgbm_prediction_params": "",
+      "indel_model_lgbm_prediction_params": "",
+      "model_lgbm_params": "",
+      "model_lgbm_prediction_params": ""
     },
     "germline-tagging": {
       "workflow": "germline-tagging",
@@ -575,6 +659,7 @@
       "min_dist": 2,
       "max_variants_per_read": 0,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "exclude",
       "min_family_size": 2,
       "filter_homopolymer": "none",
       "min_homopolymer_length": 7,
@@ -603,7 +688,9 @@
       "snv_model_lgbm_prediction_params" : "",
       "indel_model_lgbm_prediction_params" : "",
       "model_lgbm_params": "objective=multiclass boosting=gbdt metric=multi_logloss seed=1238845 learning_rate=0.01 bagging_fraction=0.9 bagging_freq=1 feature_fraction=0.5 num_leaves=64 is_unbalance=true num_classes=3 ",
-      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true"
+      "model_lgbm_prediction_params" : "num_threads=1 force_row_wise=true deterministic=true seed=1238845 pred_early_stop=true",
+      "max_indel_size": 0,
+      "min_dp_ratio": 0
     },
     "custom": {
       "workflow": "custom",
@@ -624,6 +711,7 @@
       "min_dist": 2,
       "max_variants_per_read": 0,
       "max_variants_per_read_normalized": 0.0,
+      "duplex_lowbq": "exclude",
       "min_family_size": 1,
       "filter_homopolymer": "alignment-end",
       "min_homopolymer_length": 4,
@@ -652,7 +740,9 @@
       "snv_model_lgbm_prediction_params" : "",
       "indel_model_lgbm_prediction_params" : "",
       "model_lgbm_params": "",
-      "model_lgbm_prediction_params" : ""
+      "model_lgbm_prediction_params" : "",
+      "max_indel_size": 0,
+      "min_dp_ratio": 0
     }
   }
 }

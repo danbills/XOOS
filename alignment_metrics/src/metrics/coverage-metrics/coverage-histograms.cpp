@@ -32,18 +32,19 @@ CoverageHistograms::CoverageHistograms(u32 max_depth,
       _exclude_zero_bin{exclude_zero_bin} {
 }
 
-void CoverageHistograms::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void CoverageHistograms::WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const {
   histogram::Histograms<u64> histograms{std::make_tuple(kNamePositionCount, full_coverage_histogram),
                                         std::make_tuple(kNamePostFilterPositionCount, filtered_coverage_histogram)};
   if (dataset_metadata.is_duplex_dataset) {
     histograms.emplace_back(kNameConcordantDuplexCount, concordant_duplex_coverage_histogram);
   }
 
-  histogram::WriteHistograms(
-      histograms, output_path, kNameCoverage, histogram::HistogramBinOutput::kMaxLastBin, {}, comments);
+  histogram::WriteHistogramsToTsv(
+      histograms, output_path, kNameCoverage, histogram::HistogramBinOutput::kMaxLastBin, {}, command_line_info);
 }
 
-void CoverageHistograms::WriteCoverageStatsTsv(const fs::path& output_path, const io::Comments& comments) const {
+void CoverageHistograms::WriteCoverageStatsTsv(const fs::path& output_path,
+                                               const io::CommandLineInfo& command_line_info) const {
   // Make sure we always calculate the 10th, 50th, and 90th percentile
   // because we need these values for the ratio calculations.
   // NOTE: These percentiles are not necessarily written to the output file
@@ -78,7 +79,8 @@ void CoverageHistograms::WriteCoverageStatsTsv(const fs::path& output_path, cons
   // When writing to the output, we can omit the required percentiles if they are not
   // specifically requested by the user. The values are still implicitly stored in
   // the HistogramSummary struct for computing percentile ratios.
-  histogram::WriteSummaryHistograms(summary_histograms, output_path, summary_stats_percentiles, {}, false, comments);
+  histogram::WriteSummaryHistogramsToTsv(
+      summary_histograms, output_path, summary_stats_percentiles, {}, false, command_line_info);
 
   // Write percentile ratios: ratio_90_to_10percentile and ratio_median_to_10percentile
   std::ofstream out(output_path, std::ios_base::app);
@@ -126,9 +128,9 @@ void CoverageHistograms::WriteCoverageStatsTsv(const fs::path& output_path, cons
 }
 
 void CoverageHistograms::WriteCoverageDistributionSummaryTsv(const fs::path& output_path,
-                                                             const io::Comments& comments) const {
+                                                             const io::CommandLineInfo& command_line_info) const {
   const CoverageDistributionSummary summary(*this);
-  summary.WriteTsv(output_path, comments);
+  summary.WriteTsv(output_path, command_line_info);
 }
 
 CoverageHistograms& CoverageHistograms::operator+=(const CoverageHistograms& other) {

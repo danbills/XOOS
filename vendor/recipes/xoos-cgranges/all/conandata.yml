@@ -1,0 +1,5 @@
+sources:
+  "0.1.1":
+    url: "https://github.com/lh3/cgranges/archive/refs/tags/v0.1.1.tar.gz"
+    sha256: "9445ec0cab97e736981db440cb306069d6fe33f638fbd142c106a0408ba10d6c"
+    strip_root: true

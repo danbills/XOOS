@@ -1,8 +1,7 @@
 include(CheckCXXCompilerFlag)
 
 # demux_shared_core - shared between demux_core and demux_strand_index_core
-add_library(demux_shared_core
-        STATIC
+add_default_library(demux_shared_core
         bloom-filter/interleaved-bloom-filter.cpp
         sequence/strand/strand-kmer-table.cpp
         sequence/kmer/kmerizer.cpp
@@ -24,18 +23,17 @@ find_package(Taskflow REQUIRED)
 target_link_libraries(demux_shared_core PUBLIC Taskflow::Taskflow)
 
 find_package(xxHash REQUIRED)
-target_link_libraries(demux_shared_core PRIVATE xxHash::xxhash)
-
+target_link_libraries(demux_shared_core PUBLIC xxHash::xxhash)
 
 # demux_core
-add_library(demux_core
-        STATIC
+add_default_library(demux_core
         adapter-design/adapter-design-bundle.cpp
         adapter-design/adapter-design.cpp
         adapter-design/generate-edited-sequence.cpp
         adapters/duplex/demux-and-trim-duplex.cpp
         adapters/duplex/duplex-match.cpp
         adapters/duplex/hairpin.cpp
+        adapters/duplex/hairpin-finder.cpp
         adapters/duplex/lut-bundle-duplex.cpp
         adapters/duplex/trim-duplex.cpp
         adapters/duplex/umi/demux-and-trim-duplex-umi.cpp
@@ -44,14 +42,15 @@ add_library(demux_core
         adapters/duplex/stem/demux-and-trim-duplex-stem.cpp
         adapters/duplex/stem/lut-bundle-duplex-stem.cpp
         adapters/duplex/stem/trim-duplex-stem.cpp
-        adapters/ysu-sl/demux-and-trim-ysu-sl.cpp
-        adapters/ysu-sl/lut-bundle-ysu-sl.cpp
-        adapters/ysu-sl/trim3p-ysu-sl.cpp
-        adapters/ysu-sl/trim5p-ysu-sl.cpp
-        adapters/ysu-te/demux-and-trim-ysu-te.cpp
-        adapters/ysu-te/lut-bundle-ysu-te.cpp
-        adapters/ysu-te/trim3p-ysu-te.cpp
-        adapters/ysu-te/trim5p-ysu-te.cpp
+        adapters/simplex/lut-bundle-simplex.cpp
+        adapters/simplex/demux-and-trim-simplex.cpp
+        adapters/simplex-10x/lut-bundle-simplex-10x.cpp
+        adapters/simplex-10x/demux-and-trim-simplex-10x.cpp
+        adapters/simplex-10x/sid-fast-match.cpp
+        adapters/ysu/demux-and-trim-ysu.cpp
+        adapters/ysu/lut-bundle-ysu.cpp
+        adapters/ysu/trim3p-ysu.cpp
+        adapters/ysu/trim5p-ysu.cpp
         adapters/ys/demux-and-trim-ys.cpp
         adapters/ys/lut-bundle-ys.cpp
         adapters/ys/trim3p-ys.cpp
@@ -67,6 +66,7 @@ add_library(demux_core
         metrics/simplex-metrics.cpp
         sequence/loci-range.cpp
         sequence/matcher/bitap.cpp
+        sequence/matcher/dfa-classifier.cpp
         sequence/matcher/match-info.cpp
         sequence/matcher/seq-lut.cpp
         sequence/matcher/seq-matcher.cpp
@@ -92,11 +92,12 @@ target_include_directories(demux_core SYSTEM INTERFACE .)
 target_link_libraries(demux_core PUBLIC demux_shared_core)
 
 target_link_xoos_libraries(demux_core
+        PUBLIC
+        error
         PRIVATE
         cli
         concurrent
         enum
-        error
         histogram
         io
         log
@@ -147,8 +148,8 @@ endif ()
 
 
 # demux_strand_index_core START
-add_library(demux_strand_index_core
-        STATIC
+add_default_library(
+        demux_strand_index_core
         demux-strand-index/demux-strand-build-pipeline.cpp
         demux-strand-index/strand-build.cpp
 )

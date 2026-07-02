@@ -1,0 +1,124 @@
+#!/bin/bash
+set -eu -o pipefail
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+retry() {
+    # Retry a command up to 3 times with exponential backoff.
+    local attempt=0 max=3 delay=5
+    while true; do
+        attempt=$((attempt + 1))
+        "$@" && return 0
+        if [[ $attempt -ge $max ]]; then
+            echo "[driver] WARN: '$*' failed after $max attempts"
+            return 1
+        fi
+        echo "[driver] WARN: '$*' failed (attempt $attempt/$max), retrying in ${delay}s..."
+        sleep "$delay"
+        delay=$((delay * 3))
+    done
+}
+
+# gcloud wrapper that suppresses progress output.  GCP Batch logs stderr
+# at ERROR severity, so any "Copying …" progress lines appear as false
+# errors.  --no-user-output-enabled silences them at the source.
+gcq() {
+    {{ data.cliPath }} --no-user-output-enabled "$@"
+}
+
+rotate_remote() {
+    # If the destination already exists, rename it with an incrementing
+    # index following the Nextflow convention (.1, .2, …).
+    local dst="$1"
+    if {{ data.cliPath }} storage ls "$dst" 2>/dev/null | grep -q .; then
+        local idx=1
+        while {{ data.cliPath }} storage ls "${dst}.${idx}" 2>/dev/null | grep -q .; do
+            idx=$((idx + 1))
+        done
+        retry gcq storage mv "$dst" "${dst}.${idx}" --quiet
+    fi
+}
+
+upload_debug_log() {
+    if [[ -f ".nextflow.log" ]]; then
+        rotate_remote '{{ data.debugLogPath }}'
+        retry gcq storage cp .nextflow.log '{{ data.debugLogPath }}' --quiet
+    fi
+}
+
+upload_run_log() {
+    if [[ -f "nextflow-run.log" ]]; then
+        rotate_remote '{{ data.runLogPath }}'
+        retry gcq storage cp nextflow-run.log '{{ data.runLogPath }}' --quiet
+    fi
+}
+
+cleanup() {
+    # Upload logs.  Each step is independent — a failure in one must not
+    # prevent the others.
+    # NOTE: .nextflow/ state is NOT synced.  The google-batch executor
+    # stores cache and history directly in the GCS work directory, so
+    # -resume works without a local .nextflow/ copy.
+    upload_debug_log || true
+    upload_run_log || true
+}
+
+child_pid=""
+
+handle_sigterm() {
+    echo '[driver] Caught termination signal, forwarding to Nextflow (PID: '"${child_pid:-}"')...'
+    [[ -n "${child_pid:-}" ]] && kill -INT "$child_pid" 2>/dev/null || true
+    echo '[driver] Waiting for Nextflow to terminate...'
+    [[ -n "${child_pid:-}" ]] && wait "$child_pid" 2>/dev/null || true
+    echo '[driver] Nextflow terminated, exiting.'
+    # EXIT trap fires after this, running cleanup().
+    exit 143
+}
+
+trap handle_sigterm SIGTERM SIGINT
+trap cleanup EXIT
+
+# ---------------------------------------------------------------------------
+# Stage configs
+# ---------------------------------------------------------------------------
+
+mkdir -p /pipeline/conf
+{% for cfg in data.driverFetchFiles %}
+retry gcq storage cp '{{ cfg.source_uri }}' '{{ cfg.container_path }}' --quiet \
+    || { echo "[driver] ERROR: Failed to download config {{ cfg.container_path }}"; exit 1; }
+{% endfor %}
+
+{% if data.pipelineSourceUri is defined %}
+# Download pipeline source to a secure temporary directory.
+PIPELINE_DIR=$(mktemp -d)
+retry gcq storage rsync -r '{{ data.pipelineSourceUri }}/' "$PIPELINE_DIR/" --quiet \
+    || { echo "[driver] ERROR: Failed to download pipeline from {{ data.pipelineSourceUri }}"; exit 1; }
+echo "[driver] Downloaded pipeline to $PIPELINE_DIR"
+{% endif %}
+
+# ---------------------------------------------------------------------------
+# Run Nextflow
+# ---------------------------------------------------------------------------
+
+export PYTHONUNBUFFERED=1
+export NXF_OPTS="-Xms512m -Xmx2g"
+export NXF_ANSI_LOG=false
+export COLUMNS=120
+export CLOUDSDK_PYTHON={{ data.cloudsdkPython }}
+if [[ ! -x "$CLOUDSDK_PYTHON" ]]; then
+    echo "[driver] WARN: CLOUDSDK_PYTHON=$CLOUDSDK_PYTHON not found, falling back to system python3"
+    unset CLOUDSDK_PYTHON
+fi
+
+echo "[driver] Output directory: {{ data.outputUrl }}"
+{{ data.nextflowCmd }} 2>&1 | tee nextflow-run.log &
+child_pid=$!
+
+wait "$child_pid"
+exit_code=$?
+
+echo "[driver] Nextflow exited with code: $exit_code"
+# EXIT trap runs cleanup() automatically.
+exit "$exit_code"

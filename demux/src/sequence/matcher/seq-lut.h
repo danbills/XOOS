@@ -136,7 +136,7 @@ class SeqLut {
    * @brief Calculates a 64-bit hash value using the specified string, position, and length.
    *
    * This function calculates hash values for substrings up to a length of 32 (32 x 2 bits = 64 bits).
-   * No check is done on the value of the specified length (for performance reasons).
+   * Throws if length exceeds 32.
    *
    * @return A 64-bit hash value.
    */

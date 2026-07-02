@@ -2,13 +2,13 @@
 
 #include <htslib/sam.h>
 
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/io/metadata-util.h>
 #include <xoos/types/int.h>
 
 #include "alignment-metrics-options.h"
 #include "core/alignment.h"
-#include "io/alignment-reader.h"
 #include "metadata/alignment-metadata.h"
 #include "metadata/dataset-metadata.h"
 #include "metrics/accuracy-metrics/base-level-accuracy-summary.h"
@@ -115,7 +115,7 @@ class ReadMetrics {
    * for the final metrics object (after merging per-thread metric objects) to avoid
    * double counting.
    */
-  void UpdateUnmappedReadMetrics(const AlignmentReader& alignment_reader, bool passed_filter, u16 trim);
+  void UpdateUnmappedReadMetrics(const io::AlignmentReader& alignment_reader, bool passed_filter, u16 trim);
   ReadMetrics& operator+=(const ReadMetrics& other);
 
  private:
@@ -138,10 +138,10 @@ class Metrics {
   explicit Metrics(const AlignmentMetricsOptions& options, const DatasetMetadata& dataset_metadata);
 
   /**
-   * Write the metrics contained in this object to the specified output directory with the given comments
+   * Write the metrics contained in this object to the specified output directory with the given metadata
    * as the TSV header.
    */
-  void WriteMetrics(const fs::path& output_dir, const io::Comments& comments) const;
+  void WriteMetrics(const fs::path& output_dir, const io::CommandLineInfo& command_line_info) const;
 
   Metrics& operator+=(const Metrics& other);
 };

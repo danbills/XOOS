@@ -1,0 +1,214 @@
+/*
+    Standalone server environment config template (local executor).
+    For bare-metal or single-node servers (e.g., DL380a, workstations).
+    Replace all <PLACEHOLDER> values before use.
+    Copy this file to <profile_name>.config and fill in the values.
+*/
+profiles {
+    <PROFILE_NAME> {
+        validation {
+          ignoreParams = ['error_strategy_fallback']
+        }
+
+        process {
+            maxRetries = 3
+            errorStrategy = { task.exitStatus == null || task.exitStatus in (135..140) + [137, 247, 255] ? 'retry' : params.getOrDefault('error_strategy_fallback', 'ignore') }
+
+            // Set to the physical hardware limits of the server
+            resourceLimits = [
+                memory: <TOTAL_RAM>.GB,
+                cpus: <TOTAL_CPUS>,
+                time: 30.d
+            ]
+
+            cpus   = 1
+            memory = { 4.GB * task.attempt }
+            time   = { 4.h  * task.attempt }
+
+            // --- Standard process labels ---
+
+            withLabel:process_single {
+                cpus   = 1
+                memory = { 1.GB   * task.attempt }
+                time   = { 4.h    * task.attempt }
+            }
+
+            withLabel:process_low {
+                cpus   = 2
+                memory = { 4.GB   * task.attempt }
+                time   = { 4.h    * task.attempt }
+            }
+
+            withLabel:process_medium {
+                cpus   = 8
+                memory = { 16.GB  * task.attempt }
+                time   = { 8.h    * task.attempt }
+            }
+
+            withLabel:process_high {
+                cpus   = 32
+                memory = { 48.GB  * task.attempt }
+                time   = { 16.h   * task.attempt }
+            }
+
+            withLabel:process_long {
+                time   = { 6.h    * task.attempt }
+            }
+
+            withLabel:process_high_memory {
+                cpus   = 32
+                memory = { 128.GB * task.attempt }
+                time   = { 16.h   * task.attempt }
+            }
+
+            withLabel:process_gpu {
+                accelerator = <NUM_GPUS>
+                cpus = { task.accelerator.request * <CPUS_PER_GPU> }
+            }
+
+            // --- Process-specific overrides ---
+
+            withName: XOOS_READ_COLLAPSER_MARK_DUPLICATES {
+                cpus   = 16
+                memory = { 16.GB * task.attempt }
+                time   = { 8.h   * task.attempt }
+            }
+
+            withName: XOOS_SMALL_VARIANT_CALLER_COMPUTE_VCF_FEATURES {
+                cpus   = 8
+                memory = { 8.GB  * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: VG_HAPLOTYPES {
+                cpus   = 8
+                memory = { 48.GB * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: GATK4_HAPLOTYPECALLER {
+                cpus   = 4
+                memory = { 8.GB * task.attempt }
+                time   = { 8.h  * task.attempt }
+            }
+
+            withName: GATK4_MUTECT2 {
+                cpus   = 4
+                memory = { 8.GB * task.attempt }
+                time   = { 8.h  * task.attempt }
+            }
+
+            withName: XOOS_DEMUX {
+                cpus          = { <DEMUX_CPUS> }
+                memory        = { <DEMUX_MEMORY>.GB * task.attempt }
+                time          = { 4.h    * task.attempt }
+            }
+
+            // Run-level tasks operate on a whole run rather than a single
+            // sample, so a failure here compromises every downstream sample.
+            // Use 'finish' instead of the configurable global error_strategy_fallback
+            // (default 'ignore') so a failure stops the run.
+            withName: 'XOOS_DEMUX|SUBSAMPLE_BASECALL_RDB|SUBSAMPLE_BASECALL_FASTQ|XOOS_GENERATE_REPORT|XOOS_GENERATE_REPORT_SUMMARY|MULTIQC' {
+                errorStrategy = { task.exitStatus == null || task.exitStatus in (135..143) + [255] ? 'retry' : 'finish' }
+            }
+
+            withName: PARABRICKS_GIRAFFE_SINGLE_END_MULTIPLE_FASTQS {
+                cpus   = { task.accelerator.request * <CPUS_PER_GPU> }
+                memory = { <PB_GIRAFFE_MEMORY>.GB * task.attempt }
+                time   = { 8.h    * task.attempt }
+            }
+
+            withName: PARABRICKS_HAPLOTYPECALLER {
+                memory = { <PB_HC_MEMORY>.GB * task.attempt }
+                time   = { 8.h    * task.attempt }
+            }
+
+            withName: XOOS_SMALL_VARIANT_CALLER_FILTER_VARIANTS_GERMLINE_WGS {
+                cpus   = { 24 }
+                memory = { 37.GB  * task.attempt }
+                time   = { 2.h    * task.attempt }
+            }
+
+            withName: XOOS_COPY_NUMBER_CALLER_GERMLINE_WGS {
+                cpus   = 16
+                memory = { 16.GB * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: XOOS_COPY_NUMBER_CALLER_TUMOR_NORMAL_WGS {
+                cpus   = { 24 }
+                memory = { 24.GB * task.attempt }
+                time   = { 4.h   * task.attempt }
+            }
+
+            // 16 GB: with --giraffe-input-bam the UnmappedReadCache loads
+            // all unmapped BAM records into memory.
+            withName: XOOS_STR_CALLER {
+                cpus   = { 8 }
+                memory = { 16.GB * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: 'XOOS_ALIGNMENT_METRICS_ALL|XOOS_ALIGNMENT_METRICS_COVERAGE' {
+                cpus   = { 16 }
+                memory = { 16.GB * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                cpus   = { 2 }
+                memory = { 16.GB * task.attempt }
+                time   = { 4.h   * task.attempt }
+            }
+
+            withName: PARABRICKS_FQ2BAM_SINGLE_END_MULTIPLE_FASTQS {
+                memory = { <PB_FQ2BAM_MEMORY>.GB * task.attempt }
+                time   = { 12.h   * task.attempt }
+            }
+
+            withName: BCFTOOLS_CONCAT {
+                cpus   = 2
+                memory = { 1.GB  * task.attempt }
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: HTSLIB_BGZIPTABIX {
+                time   = { 2.h   * task.attempt }
+            }
+
+            withName: SAMTOOLS_VIEW {
+                cpus   = 4
+                memory = { 4.GB  * task.attempt }
+                time   = { 8.h   * task.attempt }
+            }
+
+            withName: MINIMAP2_ALIGN {
+                accelerator  = <NUM_GPUS>
+                cpus         = { task.accelerator.request * <CPUS_PER_GPU> }
+                memory       = { (4.GB).multiply(task.cpus) * task.attempt }
+            }
+
+            withName: XOOS_CONTAMINATION_DETECTOR {
+                cpus   = { 24 }
+                memory = { 48.GB * task.attempt }
+                time   = { 4.h   * task.attempt }
+            }
+        }
+    }
+
+    somatic_wgs_tn_duplex {
+        process {
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                time   = { 12.h * task.attempt }
+            }
+        }
+    }
+
+    somatic_wgs_tn_duplex_benchmark {
+        process {
+            withName: PICARD_COLLECT_GC_BIAS_METRICS {
+                time   = { 12.h * task.attempt }
+            }
+        }
+    }
+}

@@ -4,6 +4,8 @@
 #include <xoos/cli/thread-count-option-util.h>
 #include <xoos/cli/validators/file-extension-validator.h>
 #include <xoos/enum/enum-util.h>
+#include <xoos/error/error.h>
+#include <xoos/log/logging.h>
 #include <xoos/types/int.h>
 #include <xoos/util/container-functions.h>
 #include <xoos/util/file-functions.h>
@@ -76,9 +78,27 @@ void AddCommonInputOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& optio
       ->group(group_name);
 }
 
+void AddCommonHiddenOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options) {
+  app->add_option(
+         "--ignore-read-name-parsing-errors",
+         options->ignore_read_name_parsing_errors,
+         "If enabled, parsing errors encountered when parsing read names be ignored and "
+         "the read will be treated as if it is a full read with no UMIs. This is useful for allowing "
+         "processing of BAM files that do not follow the expected read name format without having to preprocess "
+         "the BAM to fix the read names. Use with caution as this can lead to unintended consequences if the "
+         "input BAM does in fact have UMIs and/or SIDs in the read names but they are not in the expected format.")
+      ->expected(0)
+      ->default_val("false")
+      ->group(kOptGroupNameHiddenOptions);
+}
+
 void AddCommonOutputOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options, const std::string& group_name) {
   app->add_option("--output-dir", options->output_dir, "Directory for output file(s) and metrics.")
       ->default_val("output")
+      ->group(group_name);
+  app->add_option<bool>("--overwrite", options->overwrite, "Overwrite existing output files.")
+      ->expected(0)
+      ->default_val("false")
       ->group(group_name);
 }
 
@@ -92,7 +112,7 @@ void AddCommonReadFilteringOptions(cli::AppPtr app,
   app->add_option(
          "--max-discordant-duplex-error-percentage",
          options->max_discordant_duplex_error_percentage,
-         "Maximum percentage of discordant duplex bases allowed in a duplex read before the read is discarded.")
+         "Maximum percentage of discordant duplex bases allowed in a hairpin duplex record before it is discarded.")
       ->check(CLI::Range(0.0, 100.0))
       ->group(group_name);
   app->add_option<bool>(
@@ -107,7 +127,7 @@ void AddConsensusReadFilterOptions(cli::AppPtr app,
                                    const std::string& group_name) {
   app->add_option("--exclude-flags",
                   options->exclude_flags,
-                  "Exclude flags to exclude reads from analysis. "
+                  "Exclude flags to exclude BAM records from analysis. "
                   "(BAM_FSUPPLEMENTARY | BAM_FSECONDARY).  See "
                   "https://broadinstitute.github.io/picard/explain-flags.html for how to "
                   "generate flags.")
@@ -120,7 +140,7 @@ void AddMarkdupReadFilterOptions(cli::AppPtr app,
                                  const std::string& group_name) {
   app->add_option("--exclude-flags",
                   options->exclude_flags,
-                  "Exclude flags to exclude reads from analysis. "
+                  "Exclude flags to exclude BAM records from analysis. "
                   "(BAM_FSECONDARY).  See "
                   "https://broadinstitute.github.io/picard/explain-flags.html for how to "
                   "generate flags.")
@@ -212,10 +232,10 @@ void AddConsensusOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options
       ->check(CLI::Range(0.0, 1.0))
       ->default_val(kDefaultConsensusGapThreshold)
       ->group(group_name);
-  app->add_option<bool>("--include-softclips",
-                        options->include_softclips,
-                        "Include soft-clipped segments for consensus generation. Only supported for data with UMIs. "
-                        "Needs --cluster-by-umi.")
+  app->add_option<bool>("--skip-softclips",
+                        options->skip_softclips,
+                        "Skip soft-clip consensus generation. By default, soft-clipped segments are included in "
+                        "consensus generation.")
       ->expected(0)
       ->default_val("false")
       ->group(group_name);
@@ -254,6 +274,13 @@ void AddMarkdupOutputOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& opt
       ->group(group_name);
   app->add_option<bool>(
          "--merge-output", options->merge_output, "Merge output BAM files into a single position-sorted BAM file.")
+      ->expected(0)
+      ->default_val("false")
+      ->group(group_name);
+  app->add_option<bool>("--mark-supplementary-alignments",
+                        options->mark_supplementary_alignments,
+                        "Mark supplementary alignments of duplicate reads as duplicates. "
+                        "Requires an additional read/write pass over the output, which increases runtime.")
       ->expected(0)
       ->default_val("false")
       ->group(group_name);
@@ -302,6 +329,26 @@ void AddConsensusDebugOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& op
       ->group(group_name);
 }
 
+static void WarnIfIgnoringReadNameParsingErrors(const ReadCollapserOptionsPtr& options) {
+  if (options->ignore_read_name_parsing_errors) {
+    Logging::Warn(
+        "--ignore-read-name-parsing-errors is enabled. Errors encountered when parsing read names will be ignored "
+        "and the read will be treated as if it has both SIDs present and no UMIs. This can lead to unintended "
+        "consequences "
+        "if the input BAM does in fact have UMIs and/or SIDs in the read names but they are not in the expected "
+        "format.");
+    if (options->cluster_by_umi) {
+      Logging::Warn(
+          "--cluster-by-umi is enabled in combination with --ignore-read-name-parsing-errors. "
+          "If an error occurs when parsing a read name, the read will be treated as if it has no UMIs and discarded. "
+          "This can lead to unintended consequences. UMI clustering is not possible if the read name does not follow "
+          "the expected format. "
+          "If you wish to process these reads anyway, you can disable UMI clustering and the reads will be clustered "
+          "based on alignment positions alone.");
+    }
+  }
+}
+
 void ValidateConsensusOptions(const cli::ConstAppPtr& app, const ReadCollapserOptionsPtr& options) {
   // If not explicitly provided (by user or preset), default strand cluster sizes to the value of --min-cluster-size
   if (options->min_same_strand_cluster_size == 0) {
@@ -314,17 +361,15 @@ void ValidateConsensusOptions(const cli::ConstAppPtr& app, const ReadCollapserOp
   if (options->min_trim_read_support > options->min_cluster_size) {
     throw CLI::ValidationError("--min-trim-read-support must be <= --min-cluster-size.");
   }
-  // `--include-softclips` requires `--cluster-by-umi`
-  // We need to check this in a callback because the default value of `--cluster-by-umi` may be changed by presets
-  if (options->include_softclips && !options->cluster_by_umi) {
-    throw CLI::ValidationError(
-        "--include-softclips is only supported for data with UMIs and --cluster-by-umi must be enabled.");
-  }
   // Manually set exclude_flags to default value for consensus to avoid it
   // being overwritten by markdup default value
   if (app->get_option("--exclude-flags")->count() == 0) {
     options->exclude_flags = kDefaultExcludeFlagConsensus;
   }
+  // Print warning if the user specifies `--ignore-read-name-parsing-errors` since this can lead to unintended
+  // consequences if the input BAM does in fact have UMIs and/or SIDs in the read names but they are not in the expected
+  // format
+  WarnIfIgnoringReadNameParsingErrors(options);
 }
 
 void ValidateMarkdupOptions(const cli::ConstAppPtr& app, const ReadCollapserOptionsPtr& options) {
@@ -332,6 +377,44 @@ void ValidateMarkdupOptions(const cli::ConstAppPtr& app, const ReadCollapserOpti
   // being overwritten by consensus default value
   if (app->get_option("--exclude-flags")->count() == 0) {
     options->exclude_flags = kDefaultExcludeFlagMarkdup;
+  }
+  options->cluster_rescued_secondaries = true;
+  // Print warning if the user specifies `--ignore-read-name-parsing-errors` since this can lead to unintended
+  // consequences if the input BAM does in fact have UMIs and/or SIDs in the read names but they are not in the expected
+  // format
+  WarnIfIgnoringReadNameParsingErrors(options);
+}
+
+static void ValidateFileDoesNotExist(const fs::path& path, const bool overwrite) {
+  if (!overwrite && file::FileExists(path)) {
+    throw error::Error("Output file already exists: {}. Use --overwrite to replace.", path);
+  }
+}
+
+void ValidateOutputFilesDoNotExist(const ReadCollapserOptions& options) {
+  if (!fs::exists(options.output_dir)) {
+    return;
+  }
+  if (!fs::is_directory(options.output_dir)) {
+    throw error::Error("Output directory exists and is not a directory: {}", options.output_dir);
+  }
+  if (options.overwrite) {
+    return;
+  }
+  // Check for metrics files (always produced with fixed names)
+  ValidateFileDoesNotExist(options.output_dir / "summary_stats.tsv", false);
+  ValidateFileDoesNotExist(options.output_dir / "cluster_size_distribution_summary.tsv", false);
+  ValidateFileDoesNotExist(options.output_dir / "cluster_size_distributions.tsv", false);
+  // Check for merged output BAM (produced by markdup --merge-output)
+  ValidateFileDoesNotExist(options.output_dir / "output.bam", false);
+  ValidateFileDoesNotExist(options.output_dir / "output.bam.bai", false);
+  // Check for per-thread output files (BAM and FASTQ)
+  for (const auto& entry : fs::directory_iterator(options.output_dir)) {
+    const auto filename = entry.path().filename().string();
+    if (filename.starts_with("output.") &&
+        (filename.ends_with(".bam") || filename.ends_with(".bam.bai") || filename.ends_with(".fastq.gz"))) {
+      throw error::Error("Output file already exists: {}. Use --overwrite to replace.", entry.path());
+    }
   }
 }
 

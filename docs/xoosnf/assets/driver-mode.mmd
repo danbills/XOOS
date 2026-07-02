@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant User as Login node
+    participant Launcher as xoos run --env my_cluster
+    participant Slurm as sbatch
+    participant Driver as Compute node
+    participant NF as Nextflow
+
+    User->>Launcher: xoos run --env my_cluster
+    Launcher->>Launcher: Generate driver script
+    Launcher->>Slurm: sbatch driver.sh
+    Slurm->>Driver: Allocate node, run driver.sh
+    Driver->>Driver: xoos run --env my_cluster --driver-mode
+    Driver->>NF: Launch Nextflow (local executor)
+    NF->>Slurm: Submit pipeline tasks via Slurm

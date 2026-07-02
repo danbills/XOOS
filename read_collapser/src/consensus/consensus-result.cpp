@@ -2,6 +2,7 @@
 
 #include <numeric>
 
+#include <xoos/error/error.h>
 #include <xoos/types/int.h>
 
 namespace xoos::read_collapser {
@@ -12,7 +13,7 @@ ConsensusResult::ConsensusResult(size_t max_length) {
   depths.reserve(max_length);
 }
 
-u32 ConsensusResult::MeanClusterSize() {
+u32 ConsensusResult::MeanClusterSize() const {
   u32 counted_positions = depths.size();
   if (counted_positions == 0) {
     return 0;
@@ -34,7 +35,7 @@ void ConsensusResult::TrimEnds(const u32 min_trim_read_support) {
     --trimmed_end;
   }
   // If the trimmed range is empty, clear the sequence and return
-  if (trimmed_start >= trimmed_end) {
+  if (trimmed_start > trimmed_end) {
     sequence.clear();
     quality_scores.clear();
     depths.clear();
@@ -74,6 +75,21 @@ ConsensusResult& ConsensusResult::operator+=(const ConsensusResult& other) {
   sequence += other.sequence;
   quality_scores.insert(quality_scores.end(), other.quality_scores.begin(), other.quality_scores.end());
   depths.insert(depths.end(), other.depths.begin(), other.depths.end());
+  auto merge_optional_vec =
+      [](std::optional<vec<u32>>& dst, const std::optional<vec<u32>>& src, const std::string_view name) {
+        if (dst.has_value() != src.has_value()) {
+          throw error::Error("Cannot concatenate ConsensusResults with inconsistent {} presence", name);
+        }
+        if (dst.has_value()) {
+          dst->insert(dst->end(), src->begin(), src->end());
+        }
+      };
+  merge_optional_vec(forward_per_base_depth, other.forward_per_base_depth, "forward_per_base_depth");
+  merge_optional_vec(reverse_per_base_depth, other.reverse_per_base_depth, "reverse_per_base_depth");
+  merge_optional_vec(
+      forward_per_base_majority_count, other.forward_per_base_majority_count, "forward_per_base_majority_count");
+  merge_optional_vec(
+      reverse_per_base_majority_count, other.reverse_per_base_majority_count, "reverse_per_base_majority_count");
   return *this;
 }
 

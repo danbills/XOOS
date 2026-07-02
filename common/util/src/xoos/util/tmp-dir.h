@@ -10,7 +10,18 @@ namespace xoos {
 
 class TmpDir {
  public:
-  explicit TmpDir(std::source_location location = std::source_location::current(), bool read_only = false);
+  explicit TmpDir(  // NOSONAR — used by subclasses and other modules (S5536)
+      std::source_location location = std::source_location::current(),  // NOSONAR — must be a default arg (S1712)
+      bool read_only = false);                                          // NOSONAR(S1712)
+
+  /**
+   * @brief Create a temp directory under @p parent_dir with the given @p prefix.
+   *
+   * Uses POSIX mkdtemp for atomic, collision-free directory creation.
+   * The directory name will be `<prefix>.XXXXXX` where X is replaced by mkdtemp.
+   */
+  TmpDir(const std::filesystem::path& parent_dir, const std::string& prefix);                  // NOSONAR(S5536)
+  TmpDir(const std::filesystem::path& parent_dir, const std::string& prefix, bool read_only);  // NOSONAR(S5536)
 
   ~TmpDir();
 
@@ -22,7 +33,9 @@ class TmpDir {
   }
 
  private:
-  static std::filesystem::path CreateTmpDir(const std::string& name);
+  static std::filesystem::path CreateTmpDir(const std::filesystem::path& parent_dir, const std::string& prefix);
+
+  void ApplyReadOnlyPermissions() const;
 
   std::vector<util::SignalHandlerHandle> AddCleanupHandler();
   void Cleanup();

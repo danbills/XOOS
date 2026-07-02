@@ -2,7 +2,7 @@
 
 #include <thread>
 
-#include "xoos/util/parser.h"
+#include "xoos/util/parse-int.h"
 
 namespace xoos::cli {
 
@@ -12,9 +12,12 @@ CLI::Option* AddThreadCountOption(AppPtr app, const std::string& name, size_t& v
         try {
           const size_t requested_threads = util::ParseU64(inner_value);
           return std::to_string(requested_threads == 0 ? std::thread::hardware_concurrency() : requested_threads);
-        } catch (const std::exception& e) {
-          const auto msg = fmt::format("{}: {}", name, e.what());
-          throw CLI::ConversionError(msg);
+        } catch (const std::exception&) {
+          throw CLI::ConversionError(
+              fmt::format("{}: '{}' cannot be converted to option, must be a non-negative integer "
+                          "(0=available hardware threads).",
+                          name,
+                          inner_value));
         }
       })
       ->default_val(1);

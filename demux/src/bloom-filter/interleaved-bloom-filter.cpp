@@ -6,6 +6,18 @@
 
 namespace xoos::demux::strand {
 
+constexpr size_t kNumInterleavedFilters = 2;
+constexpr u64 kBitsPerByte = 8;
+constexpr u64 kBitsPerBucket = 64;
+constexpr u64 kBucketIndexShift = 6;
+constexpr u64 kBucketBitMask = kBitsPerBucket - 1;
+constexpr u64 kInterleavedFilterShift = 1;
+constexpr u64 kAdjacentFilterBitOffset = 1;
+constexpr u64 kMinimumLogicalFilterBits = 64;
+constexpr u32 kMinimumNumHashes = 1;
+constexpr double kMinProbability = 0.0;
+constexpr double kMaxProbability = 1.0;
+
 /**
  * @brief Create an empty Interleaved Bloom Filter (2 bloom filters interleaved together).
  * Automatically calculates the optimal size of the bloom filter (based on the maximum size of both sub-filters).
@@ -20,7 +32,8 @@ namespace xoos::demux::strand {
  */
 InterleavedBloomFilter::InterleavedBloomFilter(size_t elements1, size_t elements2, u32 num_hashes, u32 kmer_size,
                                                double fpr)
-    : _header(FileHeader{num_hashes, kmer_size, CalcArraySize(std::max(elements1, elements2), num_hashes, fpr) * 2}) {}
+    : _header(FileHeader{num_hashes, kmer_size,
+                         CalcArraySize(std::max(elements1, elements2), num_hashes, fpr) * kNumInterleavedFilters}) {}
 
 /**
  * @brief Load an Interleaved Bloom Filter from a file.
@@ -32,7 +45,7 @@ InterleavedBloomFilter::InterleavedBloomFilter(const std::filesystem::path& file
   std::ifstream ifs(filename, std::ios::binary);
   ifs.seekg(0, std::ios::end);
   auto size = static_cast<std::streamoff>(ifs.tellg()) - static_cast<std::streamoff>(sizeof(_header));
-  if (static_cast<u64>(size) != _header.size_in_bits / 8) {
+  if (static_cast<u64>(size) != _header.size_in_bits / kBitsPerByte) {
     throw std::runtime_error("File size does not match expected size");
   }
   ifs.seekg(sizeof(_header), std::ios::beg);
@@ -71,11 +84,11 @@ void InterleavedBloomFilter::Insert(u64 kmer, bool strand) {
 
     // Calculate physical index [0, 2m-1], using optimized bitwise operation equivalents
     // physical_index = 2 * logical_index + (strand ? 1 : 0)
-    u64 physical_index = (logical_index << 1) | static_cast<u64>(strand);
+    u64 physical_index = (logical_index << kInterleavedFilterShift) | static_cast<u64>(strand);
 
     // Calculate bucket index and bit position using bitwise operations
-    u64 bucket_index = physical_index >> 6;   // Faster than / 64
-    u64 bit_in_bucket = physical_index & 63;  // Faster than % 64
+    u64 bucket_index = physical_index >> kBucketIndexShift;  // Faster than / 64
+    u64 bit_in_bucket = physical_index & kBucketBitMask;     // Faster than % 64
 
     // Create the bit mask
     u64 bit_pos = 1ULL << bit_in_bucket;
@@ -98,15 +111,15 @@ std::pair<bool, bool> InterleavedBloomFilter::Contains(u64 kmer) const {
 
     // Calculate physical index [0, 2m-1], using optimized bitwise operation equivalents
     // physical_index = 2 * logical_index
-    u64 physical_index = (logical_index << 1);
+    u64 physical_index = (logical_index << kInterleavedFilterShift);
 
     // Calculate bucket index and bit position using bitwise operations
-    u64 bucket_index = physical_index >> 6;   // Faster than / 64
-    u64 bit_in_bucket = physical_index & 63;  // Faster than % 64
+    u64 bucket_index = physical_index >> kBucketIndexShift;  // Faster than / 64
+    u64 bit_in_bucket = physical_index & kBucketBitMask;     // Faster than % 64
 
     // Create the bit mask
     u64 bit_pos_a = 1ULL << bit_in_bucket;
-    u64 bit_pos_b = 1ULL << (bit_in_bucket + 1);
+    u64 bit_pos_b = 1ULL << (bit_in_bucket + kAdjacentFilterBitOffset);
 
     // Check Filter A (even bits) if it is not already false
     if (result.first) {
@@ -144,10 +157,10 @@ std::pair<double, double> InterleavedBloomFilter::FalsePositiveRates() const {
     num_bits_set_b += std::popcount(chunk & kMaskB);
   }
 
-  size_t num_total_bits = _bit_array.size() * 64;
+  size_t num_total_bits = _bit_array.size() * kBitsPerBucket;
 
   // Size of a single logical filter (A or B)
-  size_t num_bits_per_filter = num_total_bits / 2;
+  size_t num_bits_per_filter = num_total_bits / kNumInterleavedFilters;
 
   // Calculate occupancy (fraction of bits set) for each filter
   double occupancy_a = static_cast<double>(num_bits_set_a) / static_cast<double>(num_bits_per_filter);
@@ -174,11 +187,11 @@ u32 InterleavedBloomFilter::KmerSize() const { return _header.kmer_size; }
 // 3 hash functions: fpr = 0.125, occupancy = 0.5
 u32 InterleavedBloomFilter::CalcOptimalNumHashes(double fpr, double occupancy) {
   // check for valid fpr
-  if (fpr < 0.0 || fpr > 1) {
+  if (fpr < kMinProbability || fpr > kMaxProbability) {
     throw std::invalid_argument("False positive rate must be >0 and <1");
   }
   // check for valid occupancy
-  if (occupancy < 0.0 || occupancy > 1) {
+  if (occupancy < kMinProbability || occupancy > kMaxProbability) {
     throw std::invalid_argument("Occupancy must be >0 and <1");
   }
 
@@ -186,7 +199,7 @@ u32 InterleavedBloomFilter::CalcOptimalNumHashes(double fpr, double occupancy) {
   // round up to nearest integer
   num_hashes = std::round(num_hashes);
   // make sure num_hashes is at least 1, otherwise return 1
-  return num_hashes > 0 ? static_cast<u32>(num_hashes) : 1;
+  return num_hashes > 0 ? static_cast<u32>(num_hashes) : kMinimumNumHashes;
 }
 
 /**
@@ -208,6 +221,7 @@ size_t InterleavedBloomFilter::CalcArraySize(size_t num_elements, u32 num_hashes
   auto hashes = static_cast<double>(num_hashes);
   auto size_in_bits = 1.0 / (1.0 - pow(1.0 - pow(fpr, 1.0 / hashes), 1.0 / hashes / static_cast<double>(num_elements)));
   // round up to nearest power of 2 and ensure minimum size of 64
-  return std::bit_ceil(static_cast<size_t>(size_in_bits > 64 ? size_in_bits : 64));
+  return std::bit_ceil(
+      static_cast<size_t>(size_in_bits > kMinimumLogicalFilterBits ? size_in_bits : kMinimumLogicalFilterBits));
 }
 }  // namespace xoos::demux::strand

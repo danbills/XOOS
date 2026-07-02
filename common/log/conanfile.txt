@@ -1,5 +1,5 @@
 [requires]
-spdlog/1.15.0
+spdlog/1.17.0
 
 [generators]
 CMakeDeps

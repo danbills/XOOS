@@ -30,8 +30,6 @@ static constexpr auto kSubTypes = {"AC", "AG", "AT", "CA", "CG", "CT", "GA", "GC
 static constexpr auto kDefaultSubType = "ID";
 
 static std::string DetermineSubType(const std::string& ref, const std::string& alt) {
-  // TODO: add better handling of non-ACTG IUPAC codes, for now just map them to ID
-  // TODO: alt == "I" or "D" is for legacy support; to be removed if feature file is no longer required
   if (ref.size() != 1 || IsAnyNotACTG(ref)) {
     return kDefaultSubType;
   }
@@ -180,6 +178,9 @@ static std::unordered_map<UnifiedFeatureCols, std::string> BuildColToString() {
   col_to_string[kNonDuplex] = kNameNonDuplex;
   col_to_string[kDuplex] = kNameDuplex;
   col_to_string[kDuplexLowbq] = kNameDuplexLowbq;
+  col_to_string[kDuplexConcordant] = kNameDuplexConcordant;
+  col_to_string[kDuplexSimplex] = kNameDuplexSimplex;
+  col_to_string[kDuplexDiscordant] = kNameDuplexDiscordant;
   col_to_string[kSimplex] = kNameSimplex;
   col_to_string[kDuplexDP] = kNameDuplexDP;
   col_to_string[kDuplexAF] = kNameDuplexAF;
@@ -222,6 +223,9 @@ static std::unordered_map<UnifiedFeatureCols, std::string> BuildColToString() {
   col_to_string[kRefDistanceMeanLowbq] = kNameRefDistanceMeanLowbq;
   col_to_string[kRefDistanceMeanSimplex] = kNameRefDistanceMeanSimplex;
   col_to_string[kRefDuplexLowbq] = kNameRefDuplexLowbq;
+  col_to_string[kRefDuplexConcordant] = kNameRefDuplexConcordant;
+  col_to_string[kRefDuplexSimplex] = kNameRefDuplexSimplex;
+  col_to_string[kRefDuplexDiscordant] = kNameRefDuplexDiscordant;
   col_to_string[kRefSimplex] = kNameRefSimplex;
   col_to_string[kRefDuplexAF] = kNameRefDuplexAF;
   col_to_string[kRefFamilysizeSum] = kNameRefFamilysizeSum;
@@ -304,6 +308,7 @@ static std::unordered_map<UnifiedFeatureCols, std::string> BuildColToString() {
   col_to_string[kVcfRpaAlt] = kNameRpaAlt;
   col_to_string[kVcfStr] = kNameStr;
   col_to_string[kVcfAtInterest] = kNameAtInterest;
+  col_to_string[kVcfGcContent] = kNameGcContent;
   col_to_string[kADT] = kNameADT;
   col_to_string[kADTL] = kNameADTL;
   col_to_string[kAltLen] = kNameAltLen;
@@ -317,7 +322,7 @@ static std::unordered_map<UnifiedFeatureCols, std::string> BuildColToString() {
  * Builds a map of BAM/VCF feature column name strings to UnifiedFeatureCols enums.
  * @return resulting map between string and UnifiedFeatureCols
  */
-static StrUnorderedMap<UnifiedFeatureCols> BuildStringToCol() {
+static StrUnorderedMap<UnifiedFeatureCols> BuildStringToCol() {  // NOSONAR
   using enum UnifiedFeatureCols;
 
   StrUnorderedMap<UnifiedFeatureCols> string_to_col;
@@ -369,6 +374,9 @@ static StrUnorderedMap<UnifiedFeatureCols> BuildStringToCol() {
   string_to_col[kNameNonDuplex] = kNonDuplex;
   string_to_col[kNameDuplex] = kDuplex;
   string_to_col[kNameDuplexLowbq] = kDuplexLowbq;
+  string_to_col[kNameDuplexConcordant] = kDuplexConcordant;
+  string_to_col[kNameDuplexSimplex] = kDuplexSimplex;
+  string_to_col[kNameDuplexDiscordant] = kDuplexDiscordant;
   string_to_col[kNameSimplex] = kSimplex;
   string_to_col[kNameDuplexDP] = kDuplexDP;
   string_to_col[kNameDuplexAF] = kDuplexAF;
@@ -418,6 +426,9 @@ static StrUnorderedMap<UnifiedFeatureCols> BuildStringToCol() {
   string_to_col[kNameRefDistanceMeanLowbq] = kRefDistanceMeanLowbq;
   string_to_col[kNameRefDistanceMeanSimplex] = kRefDistanceMeanSimplex;
   string_to_col[kNameRefDuplexLowbq] = kRefDuplexLowbq;
+  string_to_col[kNameRefDuplexConcordant] = kRefDuplexConcordant;
+  string_to_col[kNameRefDuplexSimplex] = kRefDuplexSimplex;
+  string_to_col[kNameRefDuplexDiscordant] = kRefDuplexDiscordant;
   string_to_col[kNameRefSimplex] = kRefSimplex;
   string_to_col[kNameRefDuplexAF] = kRefDuplexAF;
   string_to_col[kNameRefFamilysizeSum] = kRefFamilysizeSum;
@@ -487,6 +498,7 @@ static StrUnorderedMap<UnifiedFeatureCols> BuildStringToCol() {
   string_to_col[kNameRpaAlt] = kVcfRpaAlt;
   string_to_col[kNameStr] = kVcfStr;
   string_to_col[kNameAtInterest] = kVcfAtInterest;
+  string_to_col[kNameGcContent] = kVcfGcContent;
   string_to_col[kNameADT] = kADT;
   string_to_col[kNameADTL] = kADTL;
   string_to_col[kNameAltLen] = kAltLen;

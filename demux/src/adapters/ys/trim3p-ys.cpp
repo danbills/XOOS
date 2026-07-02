@@ -1,69 +1,133 @@
 #include "trim3p-ys.h"
 
 #include <xoos/enum/enum-util.h>
+#include <xoos/error/error.h>
 
 #include <algorithm>
+#include <cassert>
 #include <string_view>
 #include <utility>
 
-#include "utility/string-util.h"
+#include "sequence/matcher/match-position-states.h"
 
 namespace xoos::demux {
 Trim3pInfoYs::Trim3pInfoYs(const u32 insert_end) : insert_end(insert_end), sid_match{} {}
 
-/**
- * Construct a 3' trimmer for YS adapters.
- *
- * @param enable_partial           Whether trimming is allowed when the SID match is unknown or partial.
- * @param sid_3p_matcher           Matcher used to locate the 3' end of the sample identifier (SID).
- * @param sid_spacer_3p_matcher    Matcher used to locate the 3' boundary between the SID and spacer sequence.
- */
-Trim3pYs::Trim3pYs(const bool enable_partial, SeqMatcher sid_3p_matcher, SeqMatcher sid_spacer_3p_matcher)
+// Preferred seed position within the 3' stem.  Among the nine possible 5bp
+// windows in the 13bp stem, the window at offset 3 (GTCGT) has the lowest
+// hit rate in real data (~60% of reads vs 70% for TTTGT), keeping the
+// number of localized Bitap calls low.
+static constexpr s32 kPreferredSeedOffset = 3;
+static constexpr s32 kSeedLength = 5;
+
+Trim3pYs::Trim3pYs(const bool enable_partial, SeqMatcher sid_3p_matcher, const std::string& stem_3p)
     : _enable_partial(enable_partial),
       _sid_3p_matcher(std::move(sid_3p_matcher)),
-      _sid_spacer_3p_matcher(std::move(sid_spacer_3p_matcher)),
-      // TODO: get from adapter bundle instead of hardcoding
-      _flank_3p_bitap("TTTGTCGTGTAGG", true) {}
+      _flank_3p_bitap(stem_3p, SearchDirection::kBackward),
+      _seed_offset(std::min(kPreferredSeedOffset, std::max(0, static_cast<s32>(stem_3p.size()) - kSeedLength))),
+      _stem_seed(stem_3p.substr(_seed_offset, kSeedLength)) {  // NOSONAR: initializer list required
+  if (_stem_seed.empty()) {
+    throw error::Error("3' stem '{}' is too short to extract a seed", stem_3p);
+  }
+}
+
+bool Trim3pYs::TryStemAtPosition(const s32 match_pos, const u8* const seq2, const u32 length, const u32 insert_start,
+                                 Trim3pInfoYs& trim_info) const {
+  assert(match_pos >= 0 && "TryStemAtPosition called with negative match_pos");
+  const auto current_pos = static_cast<u32>(match_pos);
+
+  auto sid_match0 = _sid_3p_matcher.FindBarcode(ReadEnd::k3p, current_pos, seq2, length);
+  if (AbortTrim(sid_match0, insert_start)) {
+    return true;
+  }
+  if (!sid_match0.IsUnknown()) {
+    trim_info.sid_match = sid_match0;
+    trim_info.insert_end = sid_match0.SPos();
+
+    return true;
+  }
+  return false;
+}
 
 Trim3pInfoYs Trim3pYs::Trim(const u8* const seq2, const u32 length, const char* const seq,
                             const u32 insert_start) const {
   Trim3pInfoYs trim_info(length);
-  auto current_pos = length;
 
-  if (length > 0) {
-    const s32 search_start = std::max(0, static_cast<s32>(length) - Bitap<4>::kQueryWindowSize);
-    // search is inclusive thus -1
-    const s32 end = static_cast<s32>(length - 1);
-    const s32 match_pos = _flank_3p_bitap.Find(seq, search_start, end);
-    if (match_pos != -1) {
-      // Reverse Bitap returns match start position for 3' end; use directly without offset.
-      current_pos = static_cast<u32>(match_pos);
+  if (length == 0) {
+    return trim_info;
+  }
+
+  const auto seq_view = std::string_view(seq, length);
+  const auto min_pos = static_cast<s32>(insert_start);
+  const auto query_len = _flank_3p_bitap.GetQueryLength();
+  constexpr s32 kMaxDist = 4;
+
+  // Seed-guided left-to-right search.
+  //
+  // The original algorithm used a single backward Bitap::Find over the last
+  // 64bp of the read.  Two problems arise on SBX data:
+  //
+  //  1. Post-adapter noise can push the 3' stem beyond the 64bp window,
+  //     causing under-trimming.
+  //  2. Duplicated 3' adapters place two stem copies in the read; the R→L
+  //     Bitap finds the rightmost (wrong) copy, so the SID matcher locks
+  //     onto the inter-stem SID and leaves the first adapter in the output.
+  //
+  // Scanning L→R for a short exact seed, then running a targeted Bitap in a
+  // small window around each hit, solves both: the leftmost stem is found
+  // first, and detection extends beyond the 64bp window.
+  const auto seed_len = static_cast<s32>(_stem_seed.size());
+  const s32 search_end = static_cast<s32>(length) - seed_len;
+
+  for (s32 i = min_pos; i <= search_end; ++i) {
+    if (seq_view.substr(static_cast<size_t>(i), static_cast<size_t>(seed_len)) != _stem_seed) {
+      continue;
+    }
+
+    const s32 estimated_stem_start = i - _seed_offset;
+    const s32 window_begin = std::max(min_pos, estimated_stem_start - kMaxDist);
+    const s32 window_end = std::min(static_cast<s32>(length) - 1, estimated_stem_start + query_len + kMaxDist - 1);
+
+    if (window_begin > window_end) {
+      continue;
+    }
+
+    const s32 match_pos = _flank_3p_bitap.Find(seq_view, window_begin, window_end);
+    if (match_pos == kNoMatchPosition) {
+      continue;
+    }
+
+    if (TryStemAtPosition(match_pos, seq2, length, insert_start, trim_info)) {
+      return trim_info;
     }
   }
+
+  // Fallback: original Bitap over the last 64bp.
+  //
+  // ~7% of real stems have the seed disrupted (ed >= 1 in the seed region).
+  // The backward Bitap catches these.  This only runs when the seed scan
+  // found nothing, so duplicated-adapter reads (always caught above) are
+  // unaffected.  The SID matcher always runs — either from the Bitap-found
+  // stem or from the end of the read — mirroring the original algorithm.
   {
-    auto sid_match0 = _sid_3p_matcher.FindBarcode(ReadEnd::k3p, current_pos, seq2, length);
+    auto fallback_pos = length;
+    const s32 search_start = std::max(0, static_cast<s32>(length) - Bitap<4>::kQueryWindowSize);
+    const auto end = static_cast<s32>(length - 1);
+    const s32 match_pos = _flank_3p_bitap.Find(seq_view, search_start, end);
+    if (match_pos != kNoMatchPosition) {
+      fallback_pos = static_cast<u32>(match_pos);
+    }
+
+    auto sid_match0 = _sid_3p_matcher.FindBarcode(ReadEnd::k3p, fallback_pos, seq2, length);
     if (AbortTrim(sid_match0, insert_start)) {
       return trim_info;
     }
     if (!sid_match0.IsUnknown()) {
-      current_pos = sid_match0.SPos();
       trim_info.sid_match = sid_match0;
-      trim_info.insert_end = current_pos;
+      trim_info.insert_end = sid_match0.SPos();
     }
   }
-  {
-    // TODO: Try to get this from adapter design bundle
-    const std::string overhang_seq_3p{"CGC"};
-    constexpr u32 kOverhangSize = 3;
-    auto overhang_match = FindExactMatch3p(overhang_seq_3p.c_str(), kOverhangSize, 2, current_pos, seq, length);
-    if (overhang_match) {
-      current_pos = overhang_match->spos;
-      trim_info.insert_end = current_pos;
-    } else {
-      current_pos -= std::min(static_cast<u32>(overhang_seq_3p.length()), current_pos);
-      trim_info.insert_end = current_pos;
-    }
-  }
+
   return trim_info;
 }
 

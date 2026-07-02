@@ -1,8 +1,8 @@
 #include "metrics/simplex-metrics.h"
 
 #include <fmt/format.h>
+#include <xoos/util/hash.h>
 
-#include <algorithm>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
@@ -92,7 +92,7 @@ SimplexMetrics::SimplexMetrics() {
 // TODO: replace the std::function with a template argument
 u64 SimplexMetrics::TotalCountForPool(const SidPool& sid_pool, const std::function<u64(u32)>& func) {
   auto count_all = u64{0};
-  for (const auto& [_, sid] : sid_pool) {
+  for (const auto& sid : sid_pool) {
     count_all += func(sid.id);
   }
   return count_all;
@@ -106,7 +106,7 @@ u64 SimplexMetrics::TotalFoundSids(const SidPool& sid_pool) const {
   // number of found sids with at least one read assigned
   // iterate over _sid_pool and find sids with read_count > 0
   auto num_assigned_sids = u64{0};
-  for (const auto& [_, sid] : sid_pool) {
+  for (const auto& sid : sid_pool) {
     if (GetSidReadCount(sid.id) > 0) {
       num_assigned_sids += 1;
     }
@@ -141,15 +141,13 @@ u64 SimplexMetrics::TotalSidDiscordantReadCount(const SidPool& sid_pool) const {
   return TotalCountForPool(sid_pool, [this](const u32 id) { return GetSidSidDiscordantReadCount(id); });
 }
 
-u64 SimplexMetrics::TotalReadCount() const { return _total_read_count; }
-
 u64 SimplexMetrics::TotalInputReadCount() const { return _total_input_read_count; }
 
 u64 SimplexMetrics::TotalUnassignedReadCount(const SidPool& sid_pool) const {
-  return TotalReadCount() - TotalAssignedReadCount(sid_pool);
+  return preassign_passing_read_count - TotalAssignedReadCount(sid_pool);
 }
 
-u64 SimplexMetrics::TotalFilteredReadCount() const { return TotalInputReadCount() - TotalReadCount(); }
+u64 SimplexMetrics::TotalFilteredReadCount() const { return TotalInputReadCount() - preassign_passing_read_count; }
 
 f32 SimplexMetrics::PercentFilteredReads() const {
   return CalculatePercentage(TotalFilteredReadCount(), TotalInputReadCount());
@@ -189,9 +187,9 @@ u64 SimplexMetrics::GetSidFullReadCount(const u32 id) const { return GetCount(_s
 
 u64 SimplexMetrics::GetSidIndexHoppingReadCount(const SidPool& sid_pool, const u32 id) const {
   u64 count = 0;
-  for (const auto& [sid, _] : sid_pool) {
-    count += GetSidCollisionCount(ReadEnd::k5p, id, sid);
-    count += GetSidCollisionCount(ReadEnd::k3p, id, sid);
+  for (const auto& sid : sid_pool) {
+    count += GetSidCollisionCount(ReadEnd::k5p, id, sid.id);
+    count += GetSidCollisionCount(ReadEnd::k3p, id, sid.id);
   }
   return count;
 }
@@ -211,9 +209,11 @@ u64 SimplexMetrics::GetSidSidDiscordantReadCount(const u32 id) const {
 }
 
 void SimplexMetrics::Add(const SimplexMetrics& other) {
-  _total_read_count += other._total_read_count;
+  preassign_passing_read_count += other.preassign_passing_read_count;
   _total_input_read_count += other._total_input_read_count;
-  _min_trimmed_read_len_count += other._min_trimmed_read_len_count;
+  too_short_read_count += other.too_short_read_count;
+  too_short_trimmed_read_count += other.too_short_trimmed_read_count;
+  sid_discordant_discarded_read_count += other.sid_discordant_discarded_read_count;
 
   for (decltype(other._sid_read_counts)::size_type i = 0; i < other._sid_read_counts.size(); ++i) {
     IncrementCount(&_sid_read_counts, i, GetCount(other._sid_read_counts, i));
@@ -242,8 +242,6 @@ void SimplexMetrics::Add(const SimplexMetrics& other) {
 
 void SimplexMetrics::IncrementInputReadCount() { _total_input_read_count += 1; }
 
-void SimplexMetrics::IncrementMinTrimmedReadLenFilteredCount() { _min_trimmed_read_len_count += 1; }
-
 void SimplexMetrics::WriteMetrics(const DemuxAndTrimParam& param, const SidPool& sid_pool) const {
   WriteRunMetrics(sid_pool, param);
   WriteSampleMetrics(sid_pool, param);
@@ -253,21 +251,21 @@ void SimplexMetrics::WriteMetrics(const DemuxAndTrimParam& param, const SidPool&
 
 void SimplexMetrics::WriteReadLengthDistributions(const SidPool& sid_pool, const DemuxAndTrimParam& param) const {
   const auto out_dir = param.out_dir / kMetricsDirectory;
-  const auto& comments = param.comments;
+  const auto& info = param.command_line_info;
 
   auto build_histograms = [&sid_pool](const vec<histogram::Histogram<u64>>& per_sid_hist) {
     histogram::Histograms<u64> histograms;
     histograms.reserve(sid_pool.size());
-    for (const auto& [_, barcode] : sid_pool) {
-      histograms.emplace_back(barcode.name, per_sid_hist.at(barcode.id));
+    for (const auto& sid : sid_pool) {
+      histograms.emplace_back(sid.name, per_sid_hist.at(sid.id));
     }
     return histograms;
   };
 
-  auto write_one = [&comments, &build_histograms](const vec<histogram::Histogram<u64>>& per_sid_hist,
-                                                  const fs::path& path) {
+  auto write_one = [&info, &build_histograms](const vec<histogram::Histogram<u64>>& per_sid_hist,
+                                              const fs::path& path) {
     const auto histograms = build_histograms(per_sid_hist);
-    histogram::WriteHistograms<u64>(histograms, path, "read_length", histogram::kMaxLastBin, {}, comments);
+    histogram::WriteHistogramsToTsv<u64>(histograms, path, "read_length", histogram::kMaxLastBin, {}, info);
   };
 
   write_one(_untrimmed_full_read_len_dist, out_dir / "untrimmed_full_read_len_dist.tsv");
@@ -279,11 +277,11 @@ void SimplexMetrics::WriteReadLengthDistributions(const SidPool& sid_pool, const
 void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndTrimParam& param) const {
   const auto sample_output = param.out_dir / kMetricsDirectory / kSampleMetricsFile;
   auto out = std::ofstream{sample_output, std::ofstream::out | std::ofstream::trunc};
-  const auto& comments = param.comments;
+  const auto& info = param.command_line_info;
 
   auto writer = csv::make_tsv_writer(out);
 
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(out, info);
 
   vec<std::string> run_metrics = {
       kIndexSequence,        kAssignedReads,      kFullReads,         kPartialReads,
@@ -295,7 +293,7 @@ void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndT
   header.reserve(sid_pool.size() + 2);
   header.emplace_back(kMetric);
 
-  for (const auto& [_, sid] : sid_pool) {
+  for (const auto& sid : sid_pool) {
     header.emplace_back(sid.name);
   }
   header.emplace_back("Unassigned");
@@ -308,7 +306,7 @@ void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndT
     metric_values[i].emplace_back(run_metrics[i]);
   }
   // Known sample counts
-  for (const auto& [_, sid] : sid_pool) {
+  for (const auto& sid : sid_pool) {
     metric_values[0].emplace_back(sid.sequence);
     metric_values[1].emplace_back(std::to_string(GetSidReadCount(sid.id)));
     metric_values[2].emplace_back(std::to_string(GetSidFullReadCount(sid.id)));
@@ -342,7 +340,7 @@ void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndT
     adapter_metric_values.emplace_back(Format(sf));
 
     // Output adapter match metrics for each sample in sample sheet
-    for (const auto& [_, sid] : sid_pool) {
+    for (const auto& sid : sid_pool) {
       const u64 count = GetAdapterCount({sid.id, sf});
       adapter_metric_values.emplace_back(std::to_string(count));
     }
@@ -350,7 +348,7 @@ void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndT
     // Sum up adapter match counts for each sid not in the sample sheet and unassigned
     u64 unassigned_count = GetAdapterCount({std::nullopt, sf});
     for (u32 id = 0; std::cmp_less(id, _sid_read_counts.size()); ++id) {
-      if (sid_pool.contains(id)) {
+      if (id < sid_pool.size()) {
         continue;
       }
       unassigned_count += GetAdapterCount({id, sf});
@@ -364,21 +362,16 @@ void SimplexMetrics::WriteSampleMetrics(const SidPool& sid_pool, const DemuxAndT
 void SimplexMetrics::WriteSampleAssignmentMetrics(const SidPool& sid_pool, const DemuxAndTrimParam& param) const {
   const auto output_sample_assignment_metrics = param.out_dir / kMetricsDirectory / kSampleAssignmentMetrics;
   auto out = std::ofstream{output_sample_assignment_metrics, std::ofstream::out | std::ofstream::trunc};
-  const auto& comments = param.comments;
-
-  vec<Barcode> barcodes;
-  barcodes.reserve(sid_pool.size());
-  std::ranges::transform(sid_pool, std::back_insert_iterator(barcodes), [](const auto& p) { return p.second; });
-  std::ranges::stable_sort(barcodes, [](const auto& a, const auto& b) { return a.id < b.id; });
+  const auto& info = param.command_line_info;
 
   auto writer = csv::make_tsv_writer(out);
 
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(out, info);
 
   writer << std::make_tuple("expected_sid", "collision_sid", "5'collision", "3'collision", "total_collisions",
                             "both_sid_detected_reads", "percent_sid_collision");
-  for (const auto& expected : barcodes) {
-    for (const auto& collided : barcodes) {
+  for (const auto& expected : sid_pool) {
+    for (const auto& collided : sid_pool) {
       auto count_5p = GetSidCollisionCount(ReadEnd::k5p, expected.id, collided.id);
       auto count_3p = GetSidCollisionCount(ReadEnd::k3p, expected.id, collided.id);
       auto total_collisions = count_5p + count_3p;
@@ -400,29 +393,32 @@ std::string SimplexMetrics::FormatPercent(const f32 data, const s32 precision) {
 void SimplexMetrics::WriteRunMetrics(const SidPool& sid_pool, const DemuxAndTrimParam& param) const {
   const auto run_output = param.out_dir / kMetricsDirectory / kRunMetricsFile;
   auto out = std::ofstream{run_output, std::ofstream::out | std::ofstream::trunc};
-  const auto& comments = param.comments;
+  const auto& info = param.command_line_info;
 
   auto writer = csv::make_tsv_writer(out);
 
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(out, info);
 
   auto total_binned_read_count = TotalAssignedReadCount(sid_pool);
+  const auto failed_assigned = too_short_trimmed_read_count + sid_discordant_discarded_read_count;
   writer << std::make_tuple(kMetricsName, kCount, kPercentage);
   writer << std::make_tuple(kTotalReads, _total_input_read_count,
                             FormatPercent(CalculatePercentage(_total_input_read_count, TotalInputReadCount())));
 
-  writer << std::make_tuple(kPreassignmentPassingReads, _total_read_count,
-                            FormatPercent(CalculatePercentage(_total_read_count, TotalInputReadCount())));
+  writer << std::make_tuple(kPreassignmentPassingReads, preassign_passing_read_count,
+                            FormatPercent(CalculatePercentage(preassign_passing_read_count, TotalInputReadCount())));
 
   writer << std::make_tuple(kFailedReads, TotalFilteredReadCount(), FormatPercent(PercentFilteredReads()));
-  writer << std::make_tuple(kTooShortReads, (TotalFilteredReadCount() - _min_trimmed_read_len_count),
-                            FormatPercent(CalculatePercentage(TotalFilteredReadCount() - _min_trimmed_read_len_count,
-                                                              TotalInputReadCount())));
-  writer << std::make_tuple(kTooShortTrimmedReads, _min_trimmed_read_len_count,
-                            FormatPercent(CalculatePercentage(_min_trimmed_read_len_count, TotalInputReadCount())));
-
+  writer << std::make_tuple(kTooShortReads, too_short_read_count,
+                            FormatPercent(CalculatePercentage(too_short_read_count, TotalInputReadCount())));
   writer << std::make_tuple(kAssignedReads, total_binned_read_count, FormatPercent(PercentAssignedReads(sid_pool)));
-
+  writer << std::make_tuple(kFailedAssignedReads, failed_assigned,
+                            FormatPercent(CalculatePercentage(failed_assigned, TotalInputReadCount())));
+  writer << std::make_tuple(kTooShortTrimmedReads, too_short_trimmed_read_count,
+                            FormatPercent(CalculatePercentage(too_short_trimmed_read_count, TotalInputReadCount())));
+  writer << std::make_tuple(
+      kSidDiscordantDiscardedReads, sid_discordant_discarded_read_count,
+      FormatPercent(CalculatePercentage(sid_discordant_discarded_read_count, TotalInputReadCount())));
   writer << std::make_tuple(
       kUnassignedReads, TotalUnassignedReadCount(sid_pool),
       FormatPercent(CalculatePercentage(TotalUnassignedReadCount(sid_pool), TotalInputReadCount())));

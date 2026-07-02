@@ -2,15 +2,14 @@
 
 #include <xoos/concurrent/enumerable-thread-local.h>
 #include <xoos/histogram/histogram-summary.h>
-#include <xoos/io/metadata-util.h>
 #include <xoos/types/int.h>
 #include <xoos/types/vec.h>
-#include <xoos/util/hash.h>
 
 #include <string>
 #include <unordered_map>
 
 #include "metrics/metrics-constraints.h"  // IWYU pragma: keep
+#include "metrics/read-completeness.h"
 #include "sequence/matcher/match-info.h"
 #include "sequence/matcher/seq-matcher.h"
 
@@ -111,17 +110,20 @@ class SimplexMetrics {
    */
   static SimplexMetrics SumTotal();
 
-  using SidPool = const std::unordered_map<u32, Barcode>;
-
   SimplexMetrics();
 
   void IncrementInputReadCount();
-  void IncrementMinTrimmedReadLenFilteredCount();
   void WriteMetrics(const DemuxAndTrimParam& param, const SidPool& sid_pool) const;
 
+  /**
+   * @brief Records per-read metrics including SID counts, read classification, and length distributions.
+   *
+   * @tparam T Any trim-info type with sid_5p/sid_3p fields and optionally umi_5p/umi_3p.
+   * @param[in] record The trim-info record to extract metrics from.
+   * @param[in] untrimmed_read_length The raw read length before trimming, if available.
+   */
   template <class T>
-  void AddTrimmedRead(const T& record, const std::optional<u64> untrimmed_read_length) {
-    _total_read_count += 1;
+  void RecordReadMetrics(const T& record, const std::optional<u64> untrimmed_read_length) {
     auto sf = SequencesFound{
         .sid_5p = record.sid_5p ? kYes : kNo,
         .umi_5p = GetUmi5p(record),
@@ -184,8 +186,6 @@ class SimplexMetrics {
 
   void WriteSampleAssignmentMetrics(const SidPool& sid_pool, const DemuxAndTrimParam& param) const;
 
-  u64 TotalReadCount() const;
-
   u64 TotalInputReadCount() const;
 
   u64 GetSidReadCount(u32 id) const;
@@ -194,44 +194,6 @@ class SimplexMetrics {
   u64 TotalFoundSids(const SidPool& sid_pool) const;
 
  private:
-  template <class T>
-  bool IsFullRead(const T& record) const {
-    if constexpr (requires { record.umi_5p && record.umi_3p; }) {
-      return (record.sid_5p || record.sid_3p) && (record.umi_5p && record.umi_3p);
-    } else {
-      // The adapter doesn't have UMI information
-      // We define a full read as having both SIDs here
-      return (record.sid_5p && record.sid_3p);
-    }
-  }
-
-  template <class T>
-  bool IsPartialRead(const T& record) const {
-    if constexpr (requires { record.umi_5p && record.umi_3p; }) {
-      return !IsFullRead(record) && (record.sid_5p || record.sid_3p) && (record.umi_5p || record.umi_3p);
-    } else {
-      // The adapter doesn't have UMI information
-      // We define a partial read as having at least one SID here
-      return !IsFullRead(record) && (record.sid_5p || record.sid_3p);
-    }
-  }
-
-  template <class T>
-  bool IsPerfectMatch(const T& record) const {
-    return record.sid_5p_edist && record.sid_5p_edist == 0 && record.sid_3p_edist && record.sid_3p_edist == 0 &&
-           record.sid_5p && record.sid_3p && record.sid_5p == record.sid_3p;
-  }
-
-  template <class T>
-  bool IsBothSidDetected(const T& record) const {
-    return record.sid_5p && record.sid_3p;
-  }
-
-  template <class T>
-  bool IsIndexDiscordant(const T& record) const {
-    return record.sid_5p && record.sid_3p && record.sid_5p != record.sid_3p;
-  }
-
   template <typename T>
   void IncrementCount(vec<T>* elements, size_t position, T amount) const {
     if (position >= elements->size()) {
@@ -297,9 +259,20 @@ class SimplexMetrics {
   static thread_local concurrent::EnumerableThreadLocal<SimplexMetrics> instance;
   static const vec<SequencesFound> kAllSequencesFound;
 
-  /// The total number of reads processed
-  u64 _total_read_count{};
+ public:
+  /// Passing reads before assignment
+  u64 preassign_passing_read_count{};
 
+  /// The total number of short reads from input file
+  u64 too_short_read_count{};
+
+  /// The total number of filtered trimmed reads from input file
+  u64 too_short_trimmed_read_count{};
+
+  /// @brief The total number of reads discarded due to discordant SID mode
+  u64 sid_discordant_discarded_read_count{};
+
+ private:
   // Per-SID read length histograms; index is SID id in [0, max_sid_id_index]
   // Histograms are sized to max_logged_read_length + 1 bins; outliers store lengths > max_logged_read_length
   vec<histogram::Histogram<u64>> _untrimmed_full_read_len_dist{};
@@ -309,9 +282,6 @@ class SimplexMetrics {
 
   /// The total number of reads from input file
   u64 _total_input_read_count{};
-
-  /// The total number of filtered trimmed reads from input file
-  u64 _min_trimmed_read_len_count{};
 
   /// The number of reads assigned to each sid
   vec<u64> _sid_read_counts = vec<u64>(kSidPoolSizeHint);

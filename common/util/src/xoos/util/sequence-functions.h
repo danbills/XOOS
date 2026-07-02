@@ -1,12 +1,20 @@
 #pragma once
 
+#include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include <xoos/types/int.h>
 
 namespace xoos::sequence {
 
-// Table to convert ACGT to 0123
+/// @brief The four canonical DNA bases, used for index-to-base conversion and sequence generation.
+constexpr std::string_view kDnaAlphabet = "ACGT";
+
+/**
+ * @brief Lookup table to convert DNA/RNA base characters to a 2-bit index (A/a→0, C/c→1, G/g→2, T/t/U/u→3).
+ * Accepts both uppercase and lowercase, plus uracil. All other characters map to 4 (invalid).
+ */
 constexpr u8 kBaseToBin[256] = {
     0, 1, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 4, 1, 4, 4, 4, 2, 4, 4,
@@ -16,7 +24,10 @@ constexpr u8 kBaseToBin[256] = {
     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4};
 
-// Table to convert base to its complement
+/**
+ * @brief Lookup table to convert a DNA base to its complement, preserving case (A↔T, C↔G, a↔t, c↔g).
+ * Non-ACGT characters pass through unchanged.
+ */
 constexpr u8 kBaseToComplement[256] = {
     0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,
     22,  23,  24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,
@@ -38,6 +49,36 @@ std::string ReverseComplement(const std::string& str);
 
 std::string ReverseComplementCaseSensitive(const std::string_view& str);
 
+/// @brief Check whether a character is one of the four uppercase DNA bases (A, C, G, T).
 bool IsACGT(char c);
+
+/**
+ * Helper function to convert a base character (A, C, G, T) to its corresponding index (0, 1, 2, 3).
+ * Accepts lowercase (a, c, g, t) and RNA uracil (U, u) — lowercase maps to the same index as uppercase.
+ * @param base Base character (A/a, C/c, G/g, T/t/U/u)
+ * @return Index (0 for A, 1 for C, 2 for G, 3 for T/U)
+ * @throws std::invalid_argument if base is not a valid ACGT/U character
+ */
+constexpr u8 BaseToIndex(const char base) {
+  const u8 bin_base = kBaseToBin[static_cast<u8>(base)];
+  if (bin_base > 3) [[unlikely]] {
+    throw std::invalid_argument("Non-ACGT character in BaseToIndex");
+  }
+  return bin_base;
+}
+
+/**
+ * Helper function to convert an index (0, 1, 2, 3) back to its corresponding base character (A, C, G, T).
+ * Always returns uppercase. Round-trip with BaseToIndex is lossy for lowercase and uracil input.
+ * @param index Base index (0 for A, 1 for C, 2 for G, 3 for T)
+ * @return Base character corresponding to `index`
+ * @throws std::invalid_argument if index is not in [0, 3]
+ */
+constexpr char IndexToBase(const u8 index) {
+  if (index > 3) [[unlikely]] {
+    throw std::invalid_argument("Index out of bounds in IndexToBase");
+  }
+  return kDnaAlphabet[index];
+}
 
 }  // namespace xoos::sequence

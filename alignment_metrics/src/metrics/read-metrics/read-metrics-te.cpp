@@ -10,7 +10,8 @@
 
 #include <csv.hpp>
 
-#include "io/alignment-reader.h"
+#include <xoos/io/alignment-reader.h>
+
 #include "metrics/metrics-names.h"
 #include "util/format-util.h"
 
@@ -35,10 +36,11 @@ std::vector<std::string> TargetEnrichmentReadMetrics::GetHeaders() {
   return {kNameMetricName, kNameCount, kNameDenominator, kNamePercentage};
 }
 
-void TargetEnrichmentReadMetrics::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void TargetEnrichmentReadMetrics::WriteTsv(const fs::path& output_path,
+                                           const io::CommandLineInfo& command_line_info) const {
   std::ofstream ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(ofstream);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(ofstream, command_line_info);
   writer << GetHeaders();
   writer << std::make_tuple(
       kNameTotalMappedAlignmentsInBam, total_mapped_alignments_in_bam, kNotApplicable, kNotApplicable);
@@ -57,8 +59,8 @@ u64 GetTotalMappedAlignmentsInBam(const fs::path& bam_path) {
   static u64 total_mapped_alignments_in_bam = 0;
   static bool total_mapped_alignments_in_bam_calculated = false;
   if (!total_mapped_alignments_in_bam_calculated) {
-    const AlignmentReader alignment_reader = OpenAlignmentFile(bam_path);
-    for (s32 i = 0; i < sam_hdr_nref(alignment_reader.header.get()); ++i) {
+    const io::AlignmentReader alignment_reader = io::OpenAlignmentReader(bam_path);
+    for (s32 i = 0; i < sam_hdr_nref(alignment_reader.hdr.get()); ++i) {
       u64 mapped = 0;
       u64 unmapped = 0;
       if (hts_idx_get_stat(alignment_reader.idx.get(), i, &mapped, &unmapped) == 0) {

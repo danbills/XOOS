@@ -7,6 +7,7 @@
 #include <ankerl/unordered_dense.h>
 #include <htslib/sam.h>
 
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/types/int.h>
 
@@ -15,7 +16,6 @@
 #include "core/pileup.h"
 #include "core/region-lookup.h"
 #include "core/super-region.h"
-#include "io/alignment-reader.h"
 #include "metadata/dataset-metadata.h"
 #include "metrics/metrics.h"
 
@@ -41,11 +41,11 @@ concept AlignmentProvider = std::invocable<F, bam1_t*> && std::same_as<std::invo
  */
 class BamItrAlignmentProvider {
  public:
-  explicit BamItrAlignmentProvider(const SuperRegion& super_region, const AlignmentReader& alignment_reader);
+  explicit BamItrAlignmentProvider(const SuperRegion& super_region, const io::AlignmentReader& alignment_reader);
   s32 operator()(bam1_t* bam1_ptr) const;
 
  private:
-  const AlignmentReader& _alignment_reader;
+  const io::AlignmentReader& _alignment_reader;
   io::HtsItrPtr _itr;
 };
 
@@ -193,7 +193,7 @@ class MetricsWorker {
   // A lookup table to quickly whether a read has already been processed when processing an earlier super region
   const RegionLookupTable& _region_lookup_table;
   // The alignment reader used to read alignments from the input BAM/CRAM file
-  const std::shared_ptr<AlignmentReader> _alignment_reader;
+  const std::shared_ptr<io::AlignmentReader> _alignment_reader;
   // The metrics object that holds the calculated metrics
   const std::shared_ptr<Metrics> _metrics;
 };

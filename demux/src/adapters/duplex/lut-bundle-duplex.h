@@ -8,8 +8,10 @@ namespace fs = std::filesystem;
 
 class LutBundleDuplex {
  public:
-  LutBundleDuplex(SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p, SeqMatcher stop_sequence,
-                  SeqMatcher loop_sequence);
+  LutBundleDuplex(SeqMatcher runway_5p, SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p,
+                  SeqMatcher stop_sequence, SeqMatcher loop_sequence);
+
+  const SeqMatcher& Runway5pMatcher() const;
 
   const SeqMatcher& Sid5pMatcher() const;
   const BarcodePool& Sid5pPool() const;
@@ -23,6 +25,7 @@ class LutBundleDuplex {
   std::string_view LoopSequence() const;
 
  private:
+  SeqMatcher _runway_5p_matcher;
   SeqMatcher _sid_5p_matcher;
   SeqMatcher _start_sequence_matcher;
   SeqMatcher _sid_3p_matcher;

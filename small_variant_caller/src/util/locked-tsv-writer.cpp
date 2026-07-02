@@ -31,9 +31,10 @@ void LockedTsvWriter::AppendRows(const vec<vec<std::string>>& rows) {
   }
 }
 
-void LockedTsvWriter::AppendComments(const io::Comments& comments) {
+void LockedTsvWriter::AppendMetadata(const io::CommandLineInfo& info) {
   std::scoped_lock lock{_mutex};
-  io::WriteTsvComments(_writer, comments);
+  _writer.flush();
+  io::WriteTsvMetadata(_ofs, info);
 }
 
 void LockedTsvWriter::Flush() {

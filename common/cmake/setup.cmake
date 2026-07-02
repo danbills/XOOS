@@ -42,11 +42,34 @@ macro(setup_coverage)
     option(CODE_COVERAGE_ENABLE "Enable code coverage generation" OFF)
     if (CODE_COVERAGE_ENABLE)
         set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-        # turn on atomic profile count updates, this fixes issues with corrupted
-        # counts when multi-threading is used. also disable elide constructors and default inline to provide
-        # more accurate line uncovered counting
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-update=atomic -fno-elide-constructors -fno-default-inline")
     endif ()
+endmacro()
+
+# Enable coverage instrumentation on a single target.
+macro(enable_coverage target)
+    if (CODE_COVERAGE_ENABLE)
+        target_compile_options(${target} PRIVATE
+            --coverage -fprofile-update=atomic -fno-elide-constructors -fno-default-inline)
+        target_link_options(${target} PRIVATE --coverage)
+    endif ()
+endmacro()
+
+# Create a static library with coverage instrumentation.
+# Uses enable_coverage for compile options, then promotes the link option
+# to PUBLIC so executables linking this library also get --coverage
+# (needed to resolve __gcov_* symbols from the instrumented object files).
+macro(add_default_library target)
+    add_library(${target} STATIC ${ARGN})
+    enable_coverage(${target})
+    if (CODE_COVERAGE_ENABLE)
+        target_link_options(${target} PUBLIC --coverage)
+    endif ()
+endmacro()
+
+# Create a test executable with coverage instrumentation.
+macro(add_default_test_executable target)
+    add_executable(${target} ${ARGN})
+    enable_coverage(${target})
 endmacro()
 
 macro(setup_doc name sources)
@@ -75,6 +98,10 @@ macro(setup_address_sanitizer)
     endif ()
 endmacro()
 
+macro(setup_strip)
+    option(STRIP_DISABLE "Disable stripping of executables" OFF)
+endmacro()
+
 macro(setup_static_link static_link_disable_default)
     option(STATIC_LINK_DISABLE "Disable static link of executable" ${static_link_disable_default})
     function(add_default_executable target sources)
@@ -89,6 +116,7 @@ macro(setup_static_link static_link_disable_default)
             PROGRAM_NAME="${target}"
             VERSION="${VERSION}"
         )
+        enable_coverage(${target})
         if (NOT STATIC_LINK_DISABLE)
             target_link_libraries(${target}
                 PRIVATE
@@ -102,15 +130,19 @@ macro(setup_static_link static_link_disable_default)
                 )
             endif ()
         endif ()
+        if (NOT STRIP_DISABLE AND NOT CODE_COVERAGE_ENABLE)
+            target_link_options(${target} PRIVATE $<$<CONFIG:Release>:-s>)
+        endif ()
     endfunction()
 endmacro()
 
 # parameters:
 #   LINT_DISABLE - turn off clang-tidy
-#   WARNING_AS_ERROR - enable warnings, but disable failing with error (-Werror)
-#   ADD_SRC_DISABLE - module doesn't have a src directory to add
+#   WARNING_AS_ERROR_DISABLE - disable failing on warnings (-Werror)
+#   STATIC_LINK_DISABLE - disable static linking
+#   STRIP_DISABLE - disable stripping of Release executables
 macro(setup_default_app_project name)
-    cmake_parse_arguments(SETUP_DEFAULT_ARG "LINT_DISABLE;WARNING_AS_ERROR_DISABLE;STATIC_LINK_DISABLE" "" "" ${ARGN})
+    cmake_parse_arguments(SETUP_DEFAULT_ARG "LINT_DISABLE;WARNING_AS_ERROR_DISABLE;STATIC_LINK_DISABLE;STRIP_DISABLE" "" "" ${ARGN})
     if (DEFINED SETUP_DEFAULT_ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "Unrecognized arguments: ${SETUP_DEFAULT_ARG_UNPARSED_ARGUMENTS}")
     endif ()
@@ -119,11 +151,15 @@ macro(setup_default_app_project name)
     setup_default_cxx(${SETUP_DEFAULT_ARG_WARNING_AS_ERROR_DISABLE})
     setup_target_link_libraries_util()
     setup_address_sanitizer()
+    setup_strip()
+    if (SETUP_DEFAULT_ARG_STRIP_DISABLE)
+        set(STRIP_DISABLE ON)
+    endif ()
+    setup_coverage()
     setup_static_link(${SETUP_DEFAULT_ARG_STATIC_LINK_DISABLE})
     if (NOT ${SETUP_DEFAULT_ARG_LINT_DISABLE})
         setup_lint()
     endif ()
-    setup_coverage()
     setup_doc(${name} apps include src)
 
     add_subdirectory(src)
@@ -134,7 +170,7 @@ endmacro()
 
 # parameters:
 #   LINT_DISABLE - turn off clang-tidy
-#   WARNING_AS_ERROR - enable warnings, but disable failing with error (-Werror)
+#   WARNING_AS_ERROR_DISABLE - disable failing on warnings (-Werror)
 #   ADD_SRC_DISABLE - module doesn't have a src directory to add
 function(setup_default_libxoos_project name)
     cmake_parse_arguments(SETUP_DEFAULT_ARG "LINT_DISABLE;WARNING_AS_ERROR_DISABLE;ADD_SRC_DISABLE" "" "" ${ARGN})
@@ -149,6 +185,11 @@ function(setup_default_libxoos_project name)
         setup_lint()
     else ()
         unset(CMAKE_CXX_CLANG_TIDY)
+    endif ()
+    # Disable coverage when included as a dependency of another project.
+    # The parent module handles its own coverage via add_default_library/add_default_test_executable.
+    if (NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        set(CODE_COVERAGE_ENABLE OFF)
     endif ()
     setup_coverage()
     setup_doc(${name} apps include src)

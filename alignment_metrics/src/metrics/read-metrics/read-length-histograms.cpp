@@ -12,21 +12,22 @@
 
 namespace xoos::alignment_metrics {
 
-void ReadLengthHistograms::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void ReadLengthHistograms::WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const {
   histogram::Histograms histograms{std::make_tuple(kNamePostFilterAllReadCount, post_filter_all_read_length_histogram)};
   if (dataset_metadata.has_read_type_info) {
     histograms.emplace_back(kNamePostFilterPartialReadCount, post_filter_partial_read_length_histogram);
     histograms.emplace_back(kNamePostFilterFullReadCount, post_filter_full_read_length_histogram);
   }
-  histogram::WriteHistograms(histograms,
-                             output_path,
-                             kNameReadLengthExcludingSoftClips,
-                             histogram::HistogramBinOutput::kOmitFirstBinAndMaxLastBin,
-                             {},
-                             comments);
+  histogram::WriteHistogramsToTsv(histograms,
+                                  output_path,
+                                  kNameReadLengthExcludingSoftClips,
+                                  histogram::HistogramBinOutput::kOmitFirstBinAndMaxLastBin,
+                                  {},
+                                  command_line_info);
 }
 
-void ReadLengthHistograms::WriteSummaryTsv(const fs::path& output_path, const io::Comments& comments) const {
+void ReadLengthHistograms::WriteSummaryTsv(const fs::path& output_path,
+                                           const io::CommandLineInfo& command_line_info) const {
   // Make sure we always calculate the 10th, 50th, and 90th percentile
   // because we need these values for the ratio calculations.
   // NOTE: These percentiles are not necessarily written to the output file
@@ -54,7 +55,8 @@ void ReadLengthHistograms::WriteSummaryTsv(const fs::path& output_path, const io
   // When writing to the output, we can omit the required percentiles if they are not
   // specifically requested by the user. The values are still implicitly stored in
   // the HistogramSummary struct for computing percentile ratios.
-  histogram::WriteSummaryHistograms(summary_histograms, output_path, summary_stats_percentiles, {}, false, comments);
+  histogram::WriteSummaryHistogramsToTsv(
+      summary_histograms, output_path, summary_stats_percentiles, {}, false, command_line_info);
 }
 
 }  // namespace xoos::alignment_metrics

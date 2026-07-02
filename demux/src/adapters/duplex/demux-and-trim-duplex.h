@@ -1,5 +1,7 @@
 #pragma once
 
+#include <xoos/types/int.h>
+
 #include "io/read-record.h"
 #include "lut-bundle-duplex.h"
 #include "trim-duplex.h"
@@ -26,18 +28,12 @@ class DemuxAndTrimDuplex {
   explicit DemuxAndTrimDuplex(const LutBundleDuplex& lut_bundle);
 
   /**
-   * Trims adapters, identifies SID and UMI, determines insert start and end, and determines which sample to
-   * assign the read.
-   *
-   * @param record The read to be trimmed and assigned to a sample. The sample is updated with the trim info.
-   */
-  void Demux(FixedReadRecord& record, DuplexMetrics& metrics) const;
-
-  /**
    * Find the start adapter in the consensus of a pair-wise aligned read. If not successful, attempt to find
    * the start adapter.
    */
-  int FindStartAdapterInConsensus(FixedReadRecord& record) const { return _trim.FindStartAdapterInConsensus(record); }
+  s32 FindStartAdapterInConsensus(const FixedReadRecord& record) const {
+    return _trim.FindStartAdapterInConsensus(record);
+  }
 
   /**
    * Pure virtual function to find the UMI position in a read.

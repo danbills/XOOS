@@ -12,8 +12,9 @@ namespace xoos::read_collapser {
 PoaAligner::PoaAligner(const s32 match_score,
                        const s32 mismatch_penalty,
                        const s32 gap_open_penalty,
-                       const s32 gap_ext_penalty) {
-  _engine = spoa::AlignmentEngine::Create(spoa::AlignmentType::kNW,
+                       const s32 gap_ext_penalty,
+                       const spoa::AlignmentType alignment_type) {
+  _engine = spoa::AlignmentEngine::Create(alignment_type,
                                           static_cast<s8>(match_score),
                                           static_cast<s8>(-mismatch_penalty),
                                           static_cast<s8>(-gap_open_penalty),

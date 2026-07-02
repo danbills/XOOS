@@ -31,15 +31,21 @@ concept Numeric = std::is_arithmetic_v<T>;
 
 const std::string kNA = "NA";
 const vec<u64> kDefaultPercentiles{10, 25, 50, 75, 90};
+constexpr u8 kMaxPercentile = 100;
+constexpr u8 kMedianPercentile = 50;
 
 // HistogramBinOutput defines how histogram bins should be outputted when writing to a file
 enum HistogramBinOutput {
-  kDefault,       // Default behavior: output all bins individually
-  kOmitFirstBin,  // Omit the first bin
-  kMaxLastBin,  // Add "+" to the last bin (when the last bin contains all values greater than or equal to the last bin)
-  kOmitFirstBinAndMaxLastBin,            // Omit first bin AND add "+" to the last bin
-  kOmitFirstBinAndMaxLastBinWithOutlier  // Omit first bin AND the last bin is the outliers which is size wth "+" to the
-                                         // last bin
+  // Default behavior: output all bins individually
+  kDefault,
+  // Omit the first bin
+  kOmitFirstBin,
+  // Add "+" to the last bin (when the last bin contains all values greater than or equal to the last bin)
+  kMaxLastBin,
+  // Omit first bin AND add "+" to the last bin
+  kOmitFirstBinAndMaxLastBin,
+  // Omit first bin AND the last bin is the outlier bin (bin size with "+" suffix)
+  kOmitFirstBinAndMaxLastBinWithOutlier
 };
 
 // key is percentile, value is the count
@@ -68,11 +74,11 @@ struct Histogram {
 
   // Accessor to get the bin count at a specific index
   size_t Size() const {
-    // return the last index of the outliers map
+    // return the total number of bins including outliers
     if (outliers.empty()) {
       return counts.size();
     }
-    return std::max<size_t>(counts.size(), outliers.rbegin()->first);
+    return std::max<size_t>(counts.size(), outliers.rbegin()->first + 1);
   }
 
   // Accessor to get the bin count at a specific index
@@ -104,8 +110,11 @@ struct Histogram {
     for (size_t i = 0; i < other.counts.size(); ++i) {
       result.counts[i] = counts[i] + other.counts[i];
     }
+    for (const auto& [key, value] : outliers) {
+      result.outliers[key] += value;
+    }
     for (const auto& [key, value] : other.outliers) {
-      result.outliers[key] = outliers.at(key) + value;
+      result.outliers[key] += value;
     }
     return result;
   }
@@ -124,10 +133,8 @@ struct Histogram {
   }
 
   [[nodiscard]] bool IsEmpty(u64 start_index = 0) const {
-    // check if all values are 0
-    return std::ranges::all_of(counts.begin() + ToSigned(start_index),
-                               counts.end(),
-                               [](const T& bin_count) { return bin_count == 0; }) &&
+    const auto begin = start_index < counts.size() ? counts.begin() + ToSigned(start_index) : counts.end();
+    return std::ranges::all_of(begin, counts.end(), [](const T& bin_count) { return bin_count == 0; }) &&
            outliers.empty();
   }
 
@@ -136,7 +143,7 @@ struct Histogram {
   void Reset() {
     outliers.clear();
     // set all counts to 0
-    std::fill(counts.begin(), counts.end(), T{0});
+    std::ranges::fill(counts, T{0});
   }
 
   /**
@@ -180,7 +187,7 @@ struct HistogramSummary {
   // count is the sum of all bin values (of type T) in the histogram
   T count;
   std::optional<u64> median;
-  std::optional<u64> mean;
+  std::optional<f64> mean;
   std::optional<f64> stddev;
   std::optional<u64> min;
   std::optional<u64> max;
@@ -190,7 +197,7 @@ struct HistogramSummary {
   u64 count_non_zero = 0;
 
   std::map<u64, std::optional<u64>> percentiles;
-  std::map<u64, std::optional<double>> cutoff_percentage;
+  std::map<u64, std::optional<f64>> cutoff_percentage;
 
   // TODO: remove this functionality when done with refactoring alignment metrics
   HistogramSummaryConfig config{};
@@ -297,11 +304,13 @@ f64 ComputeStddev(const Histogram<T>& histogram, const u64 start_index = 0) {
   f64 variance_sum = 0.0;
   for (u64 bin_index = start_index; std::cmp_less(bin_index, histogram.counts.size()); ++bin_index) {
     const T bin_count = histogram.At(bin_index);
-    variance_sum += bin_count * std::pow(static_cast<f64>(bin_index) - mean, 2);
+    const f64 deviation = static_cast<f64>(bin_index) - mean;
+    variance_sum += bin_count * deviation * deviation;
   }
   // count outliers
   for (const auto& [bin_index, bin_count] : histogram.outliers) {
-    variance_sum += bin_count * std::pow(static_cast<f64>(bin_index) - mean, 2);
+    const f64 deviation = static_cast<f64>(bin_index) - mean;
+    variance_sum += bin_count * deviation * deviation;
   }
   const f64 variance = variance_sum / static_cast<f64>(total_count);
   return std::sqrt(variance);
@@ -314,7 +323,7 @@ f64 ComputeStddev(const Histogram<T>& histogram, const u64 start_index = 0) {
  */
 template <typename T>
   requires Numeric<T>
-u64 ComputeMean(const Histogram<T>& histogram, u64 start_index = 0) {
+f64 ComputeMean(const Histogram<T>& histogram, u64 start_index) {
   if (histogram.IsEmpty(start_index)) {
     throw std::invalid_argument("Cannot compute mean of an empty histogram");
   }
@@ -330,8 +339,13 @@ u64 ComputeMean(const Histogram<T>& histogram, u64 start_index = 0) {
     total_count += bin_count;
     weighted_sum += 1LL * bin_index * bin_count;
   }
-  // Added std::round to avoid integer truncation
-  return static_cast<u64>(std::round(static_cast<double>(weighted_sum) / static_cast<double>(total_count)));
+  return static_cast<f64>(weighted_sum) / static_cast<f64>(total_count);
+}
+
+template <typename T>
+  requires Numeric<T>
+f64 ComputeMean(const Histogram<T>& histogram) {
+  return ComputeMean(histogram, 0);
 }
 
 /**
@@ -342,25 +356,35 @@ u64 ComputeMean(const Histogram<T>& histogram, u64 start_index = 0) {
  */
 template <typename T>
   requires Numeric<T>
-u64 ComputeMin(const Histogram<T>& histogram) {
-  if (histogram.IsEmpty()) {
+u64 ComputeMin(const Histogram<T>& histogram, u64 start_index) {  // NOSONAR(S5536) template instantiated in other TUs
+  if (histogram.IsEmpty(start_index)) {
     throw std::invalid_argument("Cannot compute min of an empty histogram");
   }
-  // find the first bin with non-zero count
-  auto it = std::ranges::find_if(histogram.counts, [](const u64 bin_count) { return bin_count != 0; });
-  auto min = std::ranges::distance(histogram.counts.begin(), it);
 
-  if (min < histogram.counts.size()) {
-    // if the min is within the histogram counts, we return it
-    return static_cast<u64>(min);
+  // search counts only when start_index is within bounds
+  if (start_index < histogram.counts.size()) {
+    auto it = std::ranges::find_if(histogram.counts.begin() + ToSigned(start_index),
+                                   histogram.counts.end(),
+                                   [](const T bin_count) { return bin_count != 0; });
+    auto min = std::ranges::distance(histogram.counts.begin(), it);
+    if (std::cmp_less(min, histogram.counts.size())) {
+      return static_cast<u64>(min);
+    }
   }
 
-  // NOTE: unlikely, but if the histogram has outliers and the min is histogram.size(), we need to check if the first
-  // outlier is an outlier
-  if (!histogram.outliers.empty()) {
-    return histogram.outliers.begin()->first;
+  // check outliers at or after start_index
+  auto outlier_it = histogram.outliers.lower_bound(start_index);
+  if (outlier_it != histogram.outliers.end()) {
+    return outlier_it->first;
   }
   return static_cast<u64>(histogram.counts.size());
+}
+
+/// @overload ComputeMin with start_index defaulting to 0.
+template <typename T>
+  requires Numeric<T>
+u64 ComputeMin(const Histogram<T>& histogram) {  // NOSONAR(S5536) template instantiated in other TUs
+  return ComputeMin(histogram, 0);
 }
 
 /**
@@ -376,11 +400,10 @@ u64 ComputeMax(const Histogram<T>& histogram) {
   }
   // find the last bin with non-zero count by reversing the histogram
   auto it_reversed = std::ranges::find_if(histogram.counts | std::ranges::views::reverse,
-                                          [](const u64 bin_count) { return bin_count != 0; });
+                                          [](const T bin_count) { return bin_count != 0; });
   auto max = std::ranges::distance(it_reversed, histogram.counts.rend() - 1);
-  // if the histogram has outliers, we need to check if the last bin is an outlier
-  if (!histogram.outliers.empty() && histogram.outliers.rbegin()->first >= histogram.outliers.size()) {
-    // we return the last outlier bin minus 1 since the outlier bin is not included in the histogram
+  // if the histogram has outliers, we need to check if the last outlier exceeds the counts range
+  if (!histogram.outliers.empty() && histogram.outliers.rbegin()->first >= histogram.counts.size()) {
     return histogram.outliers.rbegin()->first;
   }
   return static_cast<u64>(max);
@@ -400,29 +423,30 @@ template <typename T>
   requires Numeric<T>
 u64 ComputePercentile(const Histogram<T>& histogram, const u8 percentile, u64 start_index = 0) {
   if (histogram.IsEmpty(start_index)) {
-    throw std::invalid_argument("Cannot compute percentily of an empty histogram");
+    throw std::invalid_argument("Cannot compute percentile of an empty histogram");
   }
-  if (percentile < 0 || percentile > 100) {
-    throw std::out_of_range("Percentile must be between 0 and 100");
+  if (percentile > kMaxPercentile) {
+    throw std::out_of_range(fmt::format("Percentile must be between 0 and {}", kMaxPercentile));
   }
   // create new histogram with the starting index
   // this is useful when we want to compute percentiles for histograms that start at a specific index
   // e.g. when we want to compute percentiles for histograms that start at 2, we need to create a new histogram
   // with the starting index of 2
-  histogram::Histogram<u64> updated_histogram_with_new_start_index;
-  updated_histogram_with_new_start_index = histogram::Histogram<u64>(histogram.counts.size() - start_index, 0);
-  for (u32 bin_index = start_index; std::cmp_less(bin_index, histogram.counts.size()); ++bin_index) {
+  histogram::Histogram<T> updated_histogram_with_new_start_index;
+  updated_histogram_with_new_start_index = histogram::Histogram<T>(histogram.counts.size() - start_index, 0);
+  for (u64 bin_index = start_index; std::cmp_less(bin_index, histogram.counts.size()); ++bin_index) {
     updated_histogram_with_new_start_index.At(bin_index - start_index) = histogram.At(bin_index);
   }
   // add outliers to the new histogram
-  for (const auto& [bin_index, bin_count] : histogram.outliers) {
+  for (const auto& [bin_index, bin_count] :
+       histogram.outliers) {  // NOSONAR(S5311) structured bindings are idiomatic C++17
     updated_histogram_with_new_start_index.outliers[bin_index - start_index] = bin_count;
   }
 
   u64 percentile_bin = 0;
   if (percentile == 0) {
     percentile_bin = ComputeMin(updated_histogram_with_new_start_index);
-  } else if (percentile == 100) {
+  } else if (percentile == kMaxPercentile) {
     percentile_bin = ComputeMax(updated_histogram_with_new_start_index);
   } else {
     T total_count = ComputeCount(updated_histogram_with_new_start_index);
@@ -430,20 +454,22 @@ u64 ComputePercentile(const Histogram<T>& histogram, const u8 percentile, u64 st
     for (u64 bin_index = 0; std::cmp_less(bin_index, updated_histogram_with_new_start_index.counts.size());
          ++bin_index) {
       cumulative_count += updated_histogram_with_new_start_index.At(bin_index);
-      // we divide by 100.0 to get the ratio instead of multiplying by 100 in order to prevent potential overflow
-      if (cumulative_count >= total_count * percentile / 100.0) {
-        return bin_index + start_index;  // add the start index to the percentile bin to get the correct bin index
+      if (cumulative_count >= static_cast<f64>(total_count) * percentile / static_cast<f64>(kMaxPercentile)) {
+        // add the start index to the percentile bin to get the correct bin index
+        return bin_index + start_index;
       }
     }
     // handle outliers
     for (const auto& [bin_index, bin_count] : updated_histogram_with_new_start_index.outliers) {
       cumulative_count += bin_count;
-      if (cumulative_count >= total_count * percentile / 100.0) {
-        return bin_index + start_index;  // add the start index to the percentile bin to get the correct bin index
+      if (cumulative_count >= static_cast<f64>(total_count) * percentile / static_cast<f64>(kMaxPercentile)) {
+        // add the start index to the percentile bin to get the correct bin index
+        return bin_index + start_index;
       }
     }
   }
-  return percentile_bin + start_index;  // add the start index to the percentile bin to get the correct bin index
+  // add the start index to the percentile bin to get the correct bin index
+  return percentile_bin + start_index;
 }
 
 /**
@@ -457,7 +483,7 @@ u64 ComputePercentile(const Histogram<T>& histogram, const u8 percentile, u64 st
  */
 template <typename T>
   requires Numeric<T>
-double ComputeCutoffPercentage(const Histogram<T>& histogram, const u64 cutoff) {
+f64 ComputeCutoffPercentage(const Histogram<T>& histogram, const u64 cutoff) {
   if (histogram.IsEmpty()) {
     throw std::invalid_argument("Cannot compute cutoff percentage of an empty histogram");
   }
@@ -475,9 +501,9 @@ double ComputeCutoffPercentage(const Histogram<T>& histogram, const u64 cutoff) 
       total_count_above_cutoff += bin_count;
     }
   }
-  // calculate percentage
+  // calculate percentage — cast before multiplying to avoid u64 overflow
   const auto percentage_above_cutoff =
-      static_cast<double>(total_count_above_cutoff * 100) / static_cast<double>(total_count);
+      static_cast<f64>(total_count_above_cutoff) * static_cast<f64>(kMaxPercentile) / static_cast<f64>(total_count);
   return percentage_above_cutoff;
 }
 
@@ -522,9 +548,10 @@ HistogramSummary<T> CalculateHistogramSummary(const Histogram<T>& histogram,
                                .cutoff_percentage = std::move(empty_cutoffs)};
   }
 
-  const u64 median = exclude_zero_bins ? ComputePercentile(histogram, 50, 1) : ComputePercentile(histogram, 50);
+  const u64 median = exclude_zero_bins ? ComputePercentile(histogram, kMedianPercentile, 1)
+                                       : ComputePercentile(histogram, kMedianPercentile);
 
-  const u64 mean = ComputeMean(histogram, exclude_zero_bins ? 1 : 0);  // mean is computed from the original histogram
+  const f64 mean = ComputeMean(histogram, exclude_zero_bins ? 1 : 0);
   const f64 stddev = ComputeStddev(histogram, exclude_zero_bins ? 1 : 0);
   const u64 min = ComputeMin(histogram);
   const u64 max = ComputeMax(histogram);
@@ -555,15 +582,13 @@ HistogramSummary<T> CalculateHistogramSummary(const Histogram<T>& histogram,
  *
  * NOTE: Handles invalid operations (i.e. division by zero, or bad access) by returning std::nullopt.
  * */
-std::optional<double> GetRatioPercentile(const PercentileMap& percentiles, u64 numerator, u64 denominator);
+std::optional<f64> GetRatioPercentile(const PercentileMap& percentiles, u64 numerator, u64 denominator);
 
 // helper function to get string with 2 decimal places
 template <typename T>
   requires Numeric<T>
 std::string ValueToString(const T& val, const u8 precision = 0) {
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(precision) << static_cast<double>(val);
-  return ss.str();
+  return fmt::format("{:.{}f}", static_cast<f64>(val), precision);
 }
 
 // helper function to convert optional values to appropriate string
@@ -578,6 +603,183 @@ std::string ValueToStringOrNA(const std::optional<T>& val, const u8 precision = 
 }
 
 /**
+ * @brief Append a formatted numeric value to a TSV row.
+ *
+ * Converts @p value to a string and appends it to @p row. If @p precisions is non-empty, the value is formatted with
+ * the precision at @p precision_index (which is then incremented). If @p precisions is empty, the value is formatted
+ * with default precision (0 decimal places).
+ *
+ * This is a helper used by WriteHistogramBinRows, WriteOutlierRows, and WriteFoldedOutlierRow to keep formatting
+ * logic in one place.
+ *
+ * @param row the row to append the formatted value to
+ * @param value the numeric value to format and append
+ * @param precisions per-histogram decimal precision values; empty means use default precision
+ * @param precision_index current index into @p precisions, incremented after use
+ */
+template <typename T>
+  requires Numeric<T>
+void AppendValue(vec<std::string>& row,  // NOSONAR(S5536)
+                 const T value,
+                 const vec<u8>& precisions,
+                 size_t& precision_index) {
+  if (precisions.empty()) {
+    row.push_back(ValueToString<T>(value));
+  } else {
+    const auto precision = precisions.at(precision_index);
+    ++precision_index;
+    row.push_back(ValueToString<T>(value, precision));
+  }
+}
+
+/**
+ * @brief Check whether the output mode skips bin 0.
+ *
+ * Returns true for kOmitFirstBin, kOmitFirstBinAndMaxLastBinWithOutlier, and kOmitFirstBinAndMaxLastBin. These modes
+ * are used when bin 0 represents an uninteresting or dominant category (e.g., zero-coverage regions) that would
+ * obscure the rest of the distribution.
+ *
+ * @param mode the histogram bin output mode to check
+ * @return true if the mode omits the first bin
+ */
+bool OmitsFirstBin(HistogramBinOutput mode);
+
+/**
+ * @brief Check whether the output mode folds outlier bins into the last regular bin.
+ *
+ * Returns true for kMaxLastBin and kOmitFirstBinAndMaxLastBin. In these modes, the last bin label is suffixed with "+"
+ * and its count includes all outlier values at or beyond that bin index. This produces a compact output where the tail
+ * of the distribution is collapsed into a single row.
+ *
+ * @param mode the histogram bin output mode to check
+ * @return true if the mode folds outliers into the last bin
+ */
+bool FoldsOutliersIntoLastBin(HistogramBinOutput mode);
+
+/**
+ * @brief Write the main histogram bin rows to a TSV writer.
+ *
+ * Iterates over each bin index from 0 to @p num_bins and writes one TSV row per bin. The first column is the bin label
+ * and subsequent columns are the histogram values (one per histogram in @p histograms).
+ *
+ * Bin output behavior depends on @p histogram_bin_output:
+ * - If OmitsFirstBin() is true, bin 0 is skipped.
+ * - If FoldsOutliersIntoLastBin() is true, the last bin label is suffixed with "+" and its value includes all outlier
+ *   counts at or beyond that bin index.
+ *
+ * @param writer a csv::TSVWriter to write rows to
+ * @param histograms the histograms to write (all must share the same bin count)
+ * @param num_bins the number of bins (from the first histogram's counts vector)
+ * @param histogram_bin_output controls bin skipping and outlier folding behavior
+ * @param histogram_precisions per-histogram decimal precision values; empty means default precision
+ */
+template <typename T>
+  requires Numeric<T>
+void WriteHistogramBinRows(auto& writer,  // NOSONAR(S5536)
+                           const Histograms<T>& histograms,
+                           const u64 num_bins,
+                           const HistogramBinOutput histogram_bin_output,
+                           const vec<u8>& histogram_precisions) {
+  for (u64 bin_index = 0; bin_index < num_bins; ++bin_index) {
+    if (OmitsFirstBin(histogram_bin_output) && bin_index == 0) {
+      continue;
+    }
+    auto bin = std::to_string(bin_index);
+    if (bin_index == num_bins - 1 && FoldsOutliersIntoLastBin(histogram_bin_output)) {
+      bin += "+";
+    }
+    vec row{bin};
+    size_t precision_index = 0;
+    for (const auto& [_, histogram] : histograms) {
+      auto histogram_value = histogram.At(bin_index);
+      if (bin_index == num_bins - 1 && FoldsOutliersIntoLastBin(histogram_bin_output)) {
+        for (const auto& [outlier_bin_index, outlier_value] : histogram.outliers) {
+          if (outlier_bin_index >= bin_index) {
+            histogram_value += outlier_value;
+          }
+        }
+      }
+      AppendValue(row, histogram_value, histogram_precisions, precision_index);
+    }
+    writer << row;
+  }
+}
+
+/**
+ * @brief Write explicit outlier bin rows to a TSV writer.
+ *
+ * Used when the output mode is kDefault or kOmitFirstBin — modes where outliers are not folded into the last regular
+ * bin. Writes one row per outlier bin index, from @p num_bins up to the maximum outlier bin index across all
+ * histograms. Bins with no outlier entry for a given histogram are written as zero.
+ *
+ * @param writer a csv::TSVWriter to write rows to
+ * @param histograms the histograms whose outlier maps are iterated
+ * @param num_bins the number of regular bins (outlier rows start at this index)
+ * @param histogram_precisions per-histogram decimal precision values; empty means default precision
+ */
+template <typename T>
+  requires Numeric<T>
+void WriteOutlierRows(auto& writer,  // NOSONAR(S5536)
+                      const Histograms<T>& histograms,
+                      const u64 num_bins,
+                      const vec<u8>& histogram_precisions) {
+  u64 max_outlier_bin_index = 0;
+  for (const auto& [_, histogram] : histograms) {
+    for (const auto& [outlier_bin_index, _] : histogram.outliers) {
+      max_outlier_bin_index = std::max(max_outlier_bin_index, outlier_bin_index);
+    }
+  }
+  for (u64 bin_index = num_bins; bin_index < max_outlier_bin_index + 1; ++bin_index) {
+    vec<std::string> row{};
+    row.push_back(ValueToString<u64>(bin_index));
+    // Each histogram contributes one column; missing outlier entries are written as zero.
+    size_t precision_index = 0;
+    for (const auto& [_, histogram] : histograms) {
+      T bin_value = T{0};
+      if (histogram.outliers.contains(bin_index)) {
+        bin_value = histogram.outliers.at(bin_index);
+      }
+      AppendValue(row, bin_value, histogram_precisions, precision_index);
+    }
+    writer << row;
+  }
+}
+
+/**
+ * @brief Write a single summary row that folds all outliers into a "N+" bin.
+ *
+ * Used when the output mode is kOmitFirstBinAndMaxLastBinWithOutlier. Writes one row labeled "{num_bins}+" whose value
+ * is the sum of all outlier counts across all outlier bin indices for each histogram. This differs from
+ * FoldsOutliersIntoLastBin modes where outliers are added to the last regular bin — here they get their own separate
+ * row.
+ *
+ * @param writer a csv::TSVWriter to write the row to
+ * @param histograms the histograms whose outlier maps are summed
+ * @param num_bins the number of regular bins (used to label the row as "{num_bins}+")
+ * @param histogram_precisions per-histogram decimal precision values; empty means default precision
+ */
+template <typename T>
+  requires Numeric<T>
+void WriteFoldedOutlierRow(auto& writer,  // NOSONAR(S5536)
+                           const Histograms<T>& histograms,
+                           const u64 num_bins,
+                           const vec<u8>& histogram_precisions) {
+  const auto bin = fmt::format("{}+", num_bins);
+  vec row{bin};
+  // Each histogram contributes one column with the sum of all its outlier values.
+  size_t precision_index = 0;
+  for (const auto& [_, histogram] : histograms) {
+    auto histogram_value = T{0};
+    for (const auto& [outlier_bin_index, outlier_value] : histogram.outliers) {
+      histogram_value += outlier_value;
+    }
+    AppendValue(row, histogram_value, histogram_precisions, precision_index);
+  }
+  writer << row;
+}
+
+/**
+ * @brief Write histogram data to a TSV file with structured CommandLineInfo metadata.
  *
  * Writes the histogram(s) to a file in tab-separated format. Each row is a bin and each column is a value from the
  * respective histogram (aside from the first column, which is for the bins themselves). This provides the user with a
@@ -587,187 +789,122 @@ std::string ValueToStringOrNA(const std::optional<T>& val, const u8 precision = 
  * NOTE: All histograms must share the same x-axis (bins). Additional formatting can be specified with
  * histogram_bin_output (i.e. omit the first bin, add a "+" to the last bin).
  *
- * Step 1: Open the output file and compute the number of bins (rows).
- * Step 2: Write the header.
- * Step 3: For each bin, combine all histogram data into a suitable format (vec<std::string>) and write to output.
+ * Writes a `##RocheCommandLine=<...>` metadata line via io::WriteTsvMetadata.
  *
- * Example:
+ * Example output:
+ * @code
+ * ##RocheCommandLine=<ID=tool_name,Version="1.0.0",CommandLine="tool_name --input foo.bam">
  * cluster_size  total_clusters
  * 0  0
  * 1  5
  * 2  3
  * 3+  1
+ * @endcode
  *
+ * @param histograms a vector of (name, Histogram) tuples; all histograms must share the same bin count
+ * @param output_histogram the path to the output TSV file
+ * @param binning_name the label for the first column (e.g., "depth", "cluster_size")
+ * @param histogram_bin_output controls bin skipping and outlier handling (see HistogramBinOutput)
+ * @param histogram_precisions per-histogram decimal precision values; empty means default precision. Must be empty or
+ *        have exactly one entry per histogram.
+ * @param command_line_info tool name, version, and command line string written as structured metadata
+ *
+ * @throws std::invalid_argument if histogram_precisions is non-empty and its size does not match the number of
+ *         histograms
  */
 template <typename T>
   requires Numeric<T>
-void WriteHistograms(const Histograms<T>& histograms,
-                     const fs::path& output_histogram,
-                     const std::string& binning_name,
-                     const HistogramBinOutput histogram_bin_output = kDefault,
-                     const vec<u8>& histogram_precisions = {},
-                     const io::Comments& comments = {}) {
-  // if the histogram does not contain any bins, there is nothing to write
+void WriteHistogramsToTsv(const Histograms<T>& histograms,  // NOSONAR(S5536)
+                          const fs::path& output_histogram,
+                          const std::string& binning_name,
+                          const HistogramBinOutput histogram_bin_output,
+                          const vec<u8>& histogram_precisions,
+                          const io::CommandLineInfo& command_line_info) {
   if (histograms.empty()) {
     return;
   }
+  if (!histogram_precisions.empty() && histogram_precisions.size() != histograms.size()) {
+    throw std::invalid_argument("Histogram precisions must be empty or match the number of histograms");
+  }
   auto out = std::ofstream{output_histogram};
   auto writer = csv::make_tsv_writer_buffered(out);
-  io::WriteTsvComments(writer, comments);
-  auto num_bins = std::get<1>(histograms.at(0)).counts.size();
+  io::WriteTsvMetadata(out, command_line_info);
+  const auto num_bins = std::get<1>(histograms.at(0)).counts.size();
+  for (const auto& [name, histogram] : histograms) {
+    if (histogram.counts.size() != num_bins) {
+      throw std::invalid_argument(
+          fmt::format("All histograms must have the same bin count. '{}' has {} bins, expected {}",
+                      name,
+                      histogram.counts.size(),
+                      num_bins));
+    }
+  }
 
-  // Write the header
   vec header{binning_name};
   for (const auto& [histogram_name, histogram] : histograms) {
     header.push_back(histogram_name);
   }
   writer << header;
 
-  // Write the histogram data
-  for (u64 bin_index = 0; std::cmp_less(bin_index, num_bins); ++bin_index) {
-    if ((histogram_bin_output == kOmitFirstBin || histogram_bin_output == kOmitFirstBinAndMaxLastBinWithOutlier ||
-         histogram_bin_output == kOmitFirstBinAndMaxLastBin) &&
-        bin_index == 0) {
-      continue;
-    }
-    auto bin = std::to_string(bin_index);
-    // if the last bin contains counts from greater bins, add a "+" to the bin name
-    if (bin_index == num_bins - 1 &&
-        (histogram_bin_output == kMaxLastBin || histogram_bin_output == kOmitFirstBinAndMaxLastBin)) {
-      bin += "+";
-    }
-    vec row{bin};
-    size_t precision_index = 0;
-    for (const auto& [_, histogram] : histograms) {
-      // here we handle the last row differently if the histogram_bin_output is set to kMaxLastBin or
-      // kOmitFirstBinAndMaxLastBin
-      auto histogram_value = histogram.At(bin_index);
-      if (bin_index == num_bins - 1 &&
-          (histogram_bin_output == kMaxLastBin || histogram_bin_output == kOmitFirstBinAndMaxLastBin)) {
-        // accumulate all values of the outliers
-        for (const auto& [outlier_bin_index, outlier_value] : histogram.outliers) {
-          if (outlier_bin_index >= bin_index) {
-            histogram_value += outlier_value;
-          }
-        }
-      }
-      if (histogram_precisions.empty()) {
-        row.push_back(ValueToString<T>(histogram_value));
-      } else {
-        auto precision = histogram_precisions[precision_index++];
-        row.push_back(ValueToString<T>(histogram_value, precision));
-      }
-    }
-    writer << row;
-  }
-  // if histogram_bin_output is set to default or omit first bin, we need to handle outliers in each histogram
-  // separately
+  WriteHistogramBinRows(writer, histograms, num_bins, histogram_bin_output, histogram_precisions);
+
   if (histogram_bin_output == kDefault || histogram_bin_output == kOmitFirstBin) {
-    // since outliers are not going to necessarily sync up between histograms, we need to get an ordered set of both
-    std::set<u64> outlier_bins;
-    u64 max_outlier_bin_index = 0;
-    for (const auto& [_, histogram] : histograms) {
-      for (const auto& [outlier_bin_index, _] : histogram.outliers) {
-        outlier_bins.insert(outlier_bin_index);
-        max_outlier_bin_index = std::max(max_outlier_bin_index, outlier_bin_index);
-      }
-    }
-
-    // now we start and the bin_index from the last bin in the histograms.count
-    for (u64 bin_index = num_bins; bin_index < max_outlier_bin_index + 1; ++bin_index) {
-      // for each bin, we need to check if it is an outlier bin in each histogram
-      vec<std::string> row{};
-      row.push_back(ValueToString<u64>(bin_index));
-      size_t precision_index = 0;
-      for (const auto& [_, histogram] : histograms) {
-        // if the histogram contains the bin_index, we can use it directly, otherwise we set it to 0
-        // find the bin_index in the histogram
-        T bin_value = T{0};
-        if (histogram.outliers.contains(bin_index)) {
-          bin_value = histogram.outliers.at(bin_index);
-        }
-
-        if (histogram_precisions.empty()) {
-          row.push_back(ValueToString<T>(bin_value));
-        } else {
-          auto precision = histogram_precisions[precision_index++];
-          row.push_back(ValueToString<T>(bin_value, precision));
-        }
-      }
-      writer << row;
-    }
+    WriteOutlierRows(writer, histograms, num_bins, histogram_precisions);
   }
 
-  // if we want to treat the very last bin for only outliers, we need to handle it separately
   if (histogram_bin_output == kOmitFirstBinAndMaxLastBinWithOutlier) {
-    auto bin = std::to_string(num_bins) + "+";
-    vec row{bin};
-    size_t precision_index = 0;
-    for (const auto& [_, histogram] : histograms) {
-      auto histogram_value = T{0};
-      // accumulate all values of the outliers
-      for (const auto& [outlier_bin_index, outlier_value] : histogram.outliers) {
-        histogram_value += outlier_value;
-      }
-      if (histogram_precisions.empty()) {
-        row.push_back(ValueToString<T>(histogram_value));
-      } else {
-        auto precision = histogram_precisions[precision_index++];
-        row.push_back(ValueToString<T>(histogram_value, precision));
-      }
-    }
-    writer << row;
+    WriteFoldedOutlierRow(writer, histograms, num_bins, histogram_precisions);
   }
 }
 
+constexpr u32 kMeanPrecision = 2;
 constexpr u32 kStddevPrecision = 2;
 
 /**
+ * @brief Write summary histogram data to a TSV file with structured CommandLineInfo metadata.
  *
  * Writes the summary of the histogram(s) to a file in tab-separated format. Each row is a metric and each column is a
  * histogram (aside from the first column, which is for the metric names). This provides the user with a single, summary
  * report for multiple distributions (if applicable).
  *
  * NOTE: All histograms must share the same x-axis (bins). If the histogram is empty (all bins are zero), then some
- * statistics will be represented by the constant kNA (i.e. not applicable). Statistics are represented by 2 decimal
- * places.
+ * statistics will be represented by the constant kNA (i.e. not applicable). Integer statistics (count, median,
+ * min, max, percentiles) are written without decimal places. Mean and stddev are written with kMeanPrecision /
+ * kStddevPrecision decimal places (currently 2). Cutoff percentages are written with 2 decimal places.
  *
- * Step 1: Open the output file.
- * Step 2: Combine all summary histogram data for the header, count, median, mean, min, and max into a suitable format
- * (vec<std::string>) for writing to output.
- * Step 3: Write the header and summary stats to the output file.
- * Step 4: If output percentiles and/or output cutoffs are provided, add each one as a new row to the output file for
- * all histograms.
+ * Writes a `##RocheCommandLine=<...>` metadata line (via io::WriteTsvMetadata) instead of the legacy `#`-prefixed
  *
- * Example:
+ * Example output:
+ * @code
+ * ##RocheCommandLine=<ID=tool_name,Version="1.0.0",CommandLine="tool_name --input foo.bam">
  * metric_name  depth_distribution
  * count  6
  * median 1
- * mean 1
- * min  0
- * max  3
+ * mean   1.17
+ * min    0
+ * max    3
+ * @endcode
  *
- * @param summary_histograms a vector of histogram summaries where each tuple contains the name of the histogram and the
- * summary statistics
- * @param output_histogram_summary the path to the output file where the summary will be written
- * @param output_percentiles a vector of percentiles to output in the summary (default is `kDefaultPercentiles`)
- * @param output_cutoffs a vector of cutoffs to output in the summary (default is empty, i.e. no cutoffs). If specified,
- * the summary will contain the percentage of counts for bins that are greater than or equal to the given cutoff.
- * @param output_total_count if true, the total count of all bins will be included in the summary (default is true)
- * @param comments optional comments to include in the output file (default is empty, i.e. no comments)
- *
+ * @param summary_histograms a vector of (name, HistogramSummary) tuples containing pre-computed summary statistics
+ * @param output_histogram_summary the path to the output TSV file
+ * @param output_percentiles a vector of percentiles to include in the summary (e.g., {25, 50, 75})
+ * @param output_cutoffs a vector of cutoffs to include in the summary. If specified, the summary will contain the
+ *        percentage of counts for bins that are greater than or equal to the given cutoff.
+ * @param output_total_count if true, the total count of all bins will be included in the summary
+ * @param command_line_info tool name, version, and command line string written as structured metadata
  */
 template <typename T>
   requires Numeric<T>
-void WriteSummaryHistograms(const HistogramSummaries<T>& summary_histograms,
-                            const fs::path& output_histogram_summary,
-                            const std::vector<u64>& output_percentiles = kDefaultPercentiles,
-                            const std::vector<u64>& output_cutoffs = {},
-                            bool output_total_count = true,
-                            const io::Comments& comments = {}) {
+void WriteSummaryHistogramsToTsv(const HistogramSummaries<T>& summary_histograms,  // NOSONAR(S5536)
+                                 const fs::path& output_histogram_summary,
+                                 const std::vector<u64>& output_percentiles,
+                                 const std::vector<u64>& output_cutoffs,
+                                 const bool output_total_count,
+                                 const io::CommandLineInfo& command_line_info) {
+  constexpr u8 kPercentagePrecision = 2;
   auto out = std::ofstream{output_histogram_summary};
   auto writer = csv::make_tsv_writer_buffered(out);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(out, command_line_info);
 
   // Combine all summary histograms by metric
   vec<std::string> header{"metric_name"};
@@ -780,8 +917,8 @@ void WriteSummaryHistograms(const HistogramSummaries<T>& summary_histograms,
   for (const auto& [summary_histogram_name, summary_histogram_stats] : summary_histograms) {
     header.push_back(summary_histogram_name);
     count.push_back(ValueToString<T>(summary_histogram_stats.count));
-    median.push_back(ValueToStringOrNA<f64>(summary_histogram_stats.median));
-    mean.push_back(ValueToStringOrNA<f64>(summary_histogram_stats.mean));
+    median.push_back(ValueToStringOrNA<u64>(summary_histogram_stats.median));
+    mean.push_back(ValueToStringOrNA<f64>(summary_histogram_stats.mean, kMeanPrecision));
     stddev.push_back(ValueToStringOrNA<f64>(summary_histogram_stats.stddev, kStddevPrecision));
     min.push_back(ValueToStringOrNA<u64>(summary_histogram_stats.min));
     max.push_back(ValueToStringOrNA<u64>(summary_histogram_stats.max));
@@ -801,7 +938,7 @@ void WriteSummaryHistograms(const HistogramSummaries<T>& summary_histograms,
   // Custom percentiles are added if present
   if (!output_percentiles.empty()) {
     for (const auto& output_percentile : output_percentiles) {
-      vec percentile{"percentile_" + std::to_string(output_percentile)};
+      vec percentile{fmt::format("percentile_{}", output_percentile)};
       for (const auto& [_, summary_histogram_stats] : summary_histograms) {
         if (summary_histogram_stats.percentiles.contains(output_percentile)) {
           percentile.push_back(ValueToStringOrNA<u64>(summary_histogram_stats.percentiles.at(output_percentile)));
@@ -816,11 +953,11 @@ void WriteSummaryHistograms(const HistogramSummaries<T>& summary_histograms,
   // Custom percentage cutoffs are added if present
   if (!output_cutoffs.empty()) {
     for (const auto& output_cutoff : output_cutoffs) {
-      vec cutoff{"percentage_" + std::to_string(output_cutoff)};
+      vec cutoff{fmt::format("percentage_{}", output_cutoff)};
       for (const auto& [_, summary_histogram_stats] : summary_histograms) {
-        // Set the output double precision to 2 since these are percentages
         if (summary_histogram_stats.cutoff_percentage.contains(output_cutoff)) {
-          cutoff.push_back(ValueToStringOrNA<double>(summary_histogram_stats.cutoff_percentage.at(output_cutoff), 2));
+          cutoff.push_back(ValueToStringOrNA<double>(summary_histogram_stats.cutoff_percentage.at(output_cutoff),
+                                                     kPercentagePrecision));
         } else {
           cutoff.push_back(kNA);
         }
@@ -895,7 +1032,8 @@ HistogramSummary<T> CalculateLegacyHistogramSummary(
     if (min_value == std::numeric_limits<u64>::max()) {
       min_value = key;
     }
-    max_value = key;  // the last outlier is the max
+    // the last outlier is the max
+    max_value = key;
   }
 
   // for computing percentile, ignore the 0 bin
@@ -911,7 +1049,7 @@ HistogramSummary<T> CalculateLegacyHistogramSummary(
   PercentileMap percentiles_map;
   if (config.output_percentiles) {
     // these percentiles values are needed to calculate other metrics like ratio_90_to_10 and ratio_50_to_10
-    std::set<u32> required_percentile = {10, 50, 90};
+    std::set<u32> required_percentile = {10, kMedianPercentile, 90};
     // merge cli percentile with require percentile
     for (const auto& percentile : percentiles) {
       required_percentile.insert(percentile);
@@ -933,9 +1071,9 @@ HistogramSummary<T> CalculateLegacyHistogramSummary(
     }
   }
 
-  // converting u64 (total) to u32 - which should be theoretical max value of histogram
-  const u64 mean_value = non_zero_count == 0 ? 0 : ToSigned(total / non_zero_count);
-  return HistogramSummary<T>{.mean = mean_value,
+  const f64 mean_value = non_zero_count == 0 ? 0.0 : static_cast<f64>(total) / static_cast<f64>(non_zero_count);
+  return HistogramSummary<T>{.count = static_cast<T>(zero_count + non_zero_count),
+                             .mean = mean_value,
                              .min = min_value,
                              .max = max_value,
                              .count_zero = zero_count,
@@ -953,46 +1091,55 @@ void WriteLegacySummaryHistogram(const HistogramSummary<T>& summary_histogram,
                                  const std::vector<u64>& output_percentiles) {
   auto out = std::ofstream{output_histogram_summary};
   auto writer = csv::make_tsv_writer_buffered(out);
-  writer << std::make_tuple(summary_histogram.config.median, summary_histogram.percentiles.at(50).value());
-  writer << std::make_tuple(summary_histogram.config.mean, summary_histogram.mean.value());
-  writer << std::make_tuple(summary_histogram.config.min, summary_histogram.min.value());
-  writer << std::make_tuple(summary_histogram.config.max, summary_histogram.max.value());
+  if (summary_histogram.percentiles.count(kMedianPercentile) &&
+      summary_histogram.percentiles.at(kMedianPercentile).has_value()) {
+    writer << vec<std::string>{summary_histogram.config.median,
+                               std::to_string(summary_histogram.percentiles.at(kMedianPercentile).value())};
+  }
+  if (summary_histogram.mean.has_value()) {
+    writer << vec<std::string>{summary_histogram.config.mean, std::to_string(summary_histogram.mean.value())};
+  }
+  if (summary_histogram.min.has_value()) {
+    writer << vec<std::string>{summary_histogram.config.min, std::to_string(summary_histogram.min.value())};
+  }
+  if (summary_histogram.max.has_value()) {
+    writer << vec<std::string>{summary_histogram.config.max, std::to_string(summary_histogram.max.value())};
+  }
 
   // We write out default ratios if the config is set to true
   if (summary_histogram.config.output_percentile_ratios) {
     auto ratio_90_to_10percentile = GetRatioPercentile(summary_histogram.percentiles, 90, 10);
-    if (!ratio_90_to_10percentile.has_value()) {
-      writer << std::make_tuple("ratio_90_to_10percentile", 0);
-    } else {
-      writer << std::make_tuple("ratio_90_to_10percentile", ratio_90_to_10percentile.value());
-    }
-    auto ratio_median_to_10percentile = GetRatioPercentile(summary_histogram.percentiles, 50, 10);
-    if (!ratio_median_to_10percentile.has_value()) {
-      writer << std::make_tuple("ratio_median_to_10percentile", 0);
-    } else {
-      writer << std::make_tuple("ratio_median_to_10percentile", ratio_median_to_10percentile.value());
-    }
+    writer << vec<std::string>{
+        "ratio_90_to_10percentile",
+        ratio_90_to_10percentile.has_value() ? std::to_string(ratio_90_to_10percentile.value()) : "0"};
+    auto ratio_median_to_10percentile = GetRatioPercentile(summary_histogram.percentiles, kMedianPercentile, 10);
+    writer << vec<std::string>{
+        "ratio_median_to_10percentile",
+        ratio_median_to_10percentile.has_value() ? std::to_string(ratio_median_to_10percentile.value()) : "0"};
   }
 
   // Custom percentiles are added if present
   if (!output_percentiles.empty()) {
     for (const auto& key : output_percentiles) {
-      auto value = summary_histogram.percentiles.at(key).value();
-      std::string updated_key = fmt::format("percentile_{}", key);
-      writer << std::make_tuple(updated_key, value);
+      if (summary_histogram.percentiles.count(key) && summary_histogram.percentiles.at(key).has_value()) {
+        std::string updated_key = fmt::format("percentile_{}", key);
+        writer << vec<std::string>{updated_key, std::to_string(summary_histogram.percentiles.at(key).value())};
+      }
     }
   }
 
   if (summary_histogram.config.output_non_zero) {
-    writer << std::make_tuple(summary_histogram.config.non_zero, summary_histogram.count_non_zero);
+    writer << vec<std::string>{summary_histogram.config.non_zero, std::to_string(summary_histogram.count_non_zero)};
   }
   if (summary_histogram.config.output_zero) {
-    writer << std::make_tuple(summary_histogram.config.zero, summary_histogram.count_zero);
+    writer << vec<std::string>{summary_histogram.config.zero, std::to_string(summary_histogram.count_zero)};
   }
   if (summary_histogram.config.output_cutoff_percentages) {
     for (const auto& [key, value] : summary_histogram.cutoff_percentage) {
-      std::string updated_key = fmt::format("percentage_{}X", key);
-      writer << std::make_tuple(updated_key, value.value());
+      if (value.has_value()) {
+        std::string updated_key = fmt::format("percentage_{}X", key);
+        writer << vec<std::string>{updated_key, std::to_string(value.value())};
+      }
     }
   }
 }

@@ -22,21 +22,7 @@ using enum_util::FormatEnumNames;
 using util::container::Contains;
 
 void SetCommandLineInfo(const cli::ConstAppPtr app, const ReadCollapserOptionsPtr& options) {
-  std::string program_name = app->get_name();
-  std::string version = app->version();
-  // If the app has a parent, use the parent's name as the program name
-  if (auto parent = app->get_parent(); parent != nullptr) {
-    program_name = parent->get_name();
-    if (version.empty()) {
-      version = parent->version();
-    }
-  }
-  if (version.empty()) {
-    version = "unknown";
-  }
-  options->version = version;
-  options->program_name = program_name;
-  options->command_line = cli::RenderFullCli(app);
+  options->command_line_info = cli::GetCommandLineInfo(app);
 }
 
 void DefineConsensusOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options) {
@@ -51,6 +37,7 @@ void DefineConsensusOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& opti
   AddConsensusOptions(app, options, kOptGroupNameConsensusOptions);
   AddConsensusDebugOptions(app, options, kOptGroupNameConsensusDebugOptions);
   AddCommonPerformanceOptions(app, options, kOptGroupNamePerformanceOptions);
+  AddCommonHiddenOptions(app, options);
 }
 
 void DefineMarkdupOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options) {
@@ -62,6 +49,7 @@ void DefineMarkdupOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& option
   AddMarkdupReadFilterOptions(app, options, kOptGroupNameReadFilterOptions);
   AddCommonClusterOptions(app, options, kOptGroupNameClusterOptions);
   AddCommonPerformanceOptions(app, options, kOptGroupNamePerformanceOptions);
+  AddCommonHiddenOptions(app, options);
 }
 
 void DefineOptions(cli::AppPtr app, ReadCollapserOptionsPtr& options) {

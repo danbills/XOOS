@@ -1,14 +1,19 @@
 #pragma once
 
+#include <xoos/types/int.h>
+
 #include <memory>
+#include <string_view>
 #include <vector>
 
 #include "seq-lut.h"
 
-// KZ2024 - speed optimization by converting the character sequence to a 2-bit representation.
-const int kMaxMemorySequence{4096};  // this is a sequence of 16K bases, much more than we encounter
-
 namespace xoos::demux {
+
+// optimization by converting the character sequence to a 2-bit representation.
+// this is a sequence of 16K bases, much more than we encounter
+constexpr u16 kMaxMemorySequence{4096};
+
 /**
  * @class SequenceTwoBit
  * @brief A class for 2-bit representation of sequences
@@ -18,17 +23,17 @@ namespace xoos::demux {
  * which should be more than plenty for short reads.
  */
 class SequenceTwoBit {
-  static constexpr int kOffset{64};  // add some data before the actual 2-bit representation to allow code optimization
+  static constexpr u8 kOffset{64};  // add some data before the actual 2-bit representation to allow code optimization
  public:
   explicit SequenceTwoBit(const std::string_view& seq);
 
   size_t Length() const { return _length; }
 
-  const uint8_t* Data() const { return _two_bit_data + kOffset; }
+  const u8* Data() const { return _two_bit_data + kOffset; }
 
  private:
   size_t _length;
-  uint8_t _two_bit_data[kMaxMemorySequence];
+  u8 _two_bit_data[kMaxMemorySequence];
 };
 
 enum class ReadEnd {
@@ -46,30 +51,22 @@ enum class ReadEnd {
  */
 
 struct Loci {
-  uint64_t mask64{0ul};
-  int spos{0};
-  int epos{0};
-  int length{0};
-  int skip{0};
+  u64 mask64{0ULL};
+  s32 spos{0};
+  s32 epos{0};
+  s32 length{0};
+  s32 skip{0};
 
-  Loci(uint64_t mask, int start, int end, int l) {
-    mask64 = mask;
-    spos = start;
-    epos = end;
-    length = l;
-  }
+  Loci(const u64 mask, const s32 start, const s32 end, const s32 l) : mask64(mask), spos(start), epos(end), length(l) {}
 
-  Loci(int start, int end) {
-    spos = start;
-    epos = end;
-  }
+  Loci(const s32 start, const s32 end) : spos(start), epos(end) {}
 };
 
 class SeqMatcher {
  public:
   using ExcisionLoci = std::vector<Loci>;
-  static ExcisionLoci CreateRelativeExcisionLoci(int gt_seq_len, int max_edist, int max_wiggle_left,
-                                                 int max_wiggle_right);
+  static ExcisionLoci CreateRelativeExcisionLoci(s32 gt_seq_len, s32 max_edist, s32 max_wiggle_left,
+                                                 s32 max_wiggle_right);
   /**
    * @brief Constructs a SeqMatcher object with provided parameters and LUT.
    *
@@ -83,7 +80,7 @@ class SeqMatcher {
    * @param max_wiggle_right The maximum allowed right wiggle distance for excisions.
    * @param lut The sequence lookup table for barcode matching.
    */
-  SeqMatcher(uint seq_len, int max_edist, int max_wiggle_left, int max_wiggle_right, SeqLutPtr lut);
+  SeqMatcher(u32 seq_len, s32 max_edist, s32 max_wiggle_left, s32 max_wiggle_right, SeqLutPtr lut);
 
   /**
    * @brief Finds barcode matches for a given read sequence.
@@ -94,19 +91,50 @@ class SeqMatcher {
    *
    * @param read_end The end of the read to match barcode against (k3p or k5p).
    * @param start_pos The start position of the barcode matching.
-   * @param read_seq The read sequence to match against barcodes.
+   * @param two_bit The encoded read sequence to match against barcodes.
+   * @param seq_length The length of the read sequence.
    * @return A MatchInfo structure containing match details and type.
    */
-  MatchInfo FindBarcode(ReadEnd read_end, uint start_pos, const uint8_t* two_bit, size_t length) const;
+  MatchInfo FindBarcode(ReadEnd read_end, u32 start_pos, const u8* two_bit, size_t seq_length) const;
+
+  /**
+   * @brief Greedy scan for the next barcode match(es) from a scan position.
+   *
+   * Slides a barcode-length window across the remaining sequence (from `pos` to the end for k5p,
+   * from `pos` backward for k3p) and populates `results` with the first match(es) found. Unlike
+   * FindBarcode, this does NOT use the precomputed excision loci or wiggle parameters — it scans
+   * the entire remaining sequence. The prefilter LUT is still used for efficiency.
+   *
+   * For k5p the return position is EPos (right edge); for k3p it is SPos (left edge).
+   * All matches sharing the same return position are returned (rather than collapsing to "ambiguous").
+   *
+   * @param read_end     Search direction (k5p = left-to-right, k3p = right-to-left).
+   * @param pos          Start scan position.
+   * @param two_bit      2-bit encoded read sequence.
+   * @param seq_length   Length of the read in bases.
+   * @param[out] results Cleared and filled with all matches at the first return position (empty if no match).
+   */
+  void FindNextBarcode(ReadEnd read_end, s32 pos, const u8* two_bit, size_t seq_length,
+                       std::vector<MatchInfo>& results) const;
+
   const BarcodePool& Pool() const;
 
   // Allow caller to peek into the LUT
   const auto& Lut() const { return _lut; }
 
+  // Common operation for easy access of front sequence
+  const auto& GetFrontSeq() const { return _lut->Pool().front().sequence; }
+
+  u32 GetMaxDist() const { return _max_edist; }
+
  private:
-  uint _seq_len; /**< The length of the ground truth sequence. */
+  /**< The length of the ground truth sequence. */
+  u32 _seq_len;
+  /**< Maximum edit distance for matching. */
+  u32 _max_edist;
   ExcisionLoci _relative_excision_loci;
-  SeqLutPtr _lut; /**< The sequence lookup table for barcode matching. */
+  /**< The sequence lookup table for barcode matching. */
+  SeqLutPtr _lut;
   const size_t _nr_loci;
 };
 

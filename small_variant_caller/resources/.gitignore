@@ -4,5 +4,15 @@
 /model-germline-sbxd-bwa-multisample-snv.txt.gz
 /model-germline-sbxd-giraffe-multisample-indel.txt.gz
 /model-germline-sbxd-giraffe-multisample-snv.txt.gz
+/model-germline-sbxfast-giraffe-indel.txt.gz
+/model-germline-sbxfast-giraffe-snv.txt.gz
 /model-germline-sbxfast-giraffe-multisample-indel.txt.gz
 /model-germline-sbxfast-giraffe-multisample-snv.txt.gz
+/model-germline-sbxd-bwa-indel.txt.gz
+/model-germline-sbxd-bwa-snv.txt.gz
+/model-germline-sbxd-giraffe-indel.txt.gz
+/model-germline-sbxd-giraffe-snv.txt.gz
+/model-germline-sbxfast-bwa-indel.txt.gz
+/model-germline-sbxfast-bwa-snv.txt.gz
+/model-germline-sbxfast-bwa-multisample-indel.txt.gz
+/model-germline-sbxfast-bwa-multisample-snv.txt.gz

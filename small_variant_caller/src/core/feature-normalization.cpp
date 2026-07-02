@@ -1,16 +1,13 @@
 #include "feature-normalization.h"
 
-#include <filesystem>
 #include <ranges>
 
 #include <xoos/types/vec.h>
 #include <xoos/util/math.h>
 
 #include "column-names.h"
-#include "compute-vcf-features/vcf-header-util.h"
 #include "vcf-fields.h"
 #include "xoos/error/error.h"
-#include "xoos/io/vcf/vcf-reader.h"
 #include "xoos/log/logging.h"
 
 namespace xoos::svc {
@@ -58,64 +55,6 @@ ChromMedianDepth GetChromosomeMedianDepth(const VarIdToVcfFeatures& vcf_features
   }
 
   return result;
-}
-
-ChromMedianDepth GetChromosomeMedianDepth(const fs::path& vcf_path) {
-  io::VcfReader vcf_reader(vcf_path);
-  const auto hdr = vcf_reader.GetHeader();
-  if (!hdr->HasInfoField(kFieldDp)) {
-    // DP field not found in the VCF header, return empty result
-    return {};
-  }
-
-  s32 tumor_idx = -1;
-  s32 normal_idx = -1;
-  // Get tumor_sample and normal_sample indexes from the VCF header
-  const auto tn_sample_idx = GetTumorNormalSampleIndexes(hdr);
-  if (tn_sample_idx.has_value()) {
-    // tumor/normal sample indexes not found in the VCF header, return empty result
-    tumor_idx = tn_sample_idx->tumor_sample_idx;
-    normal_idx = tn_sample_idx->normal_sample_idx;
-  } else {
-    // assume single-sample VCF, use sample index 0 as normal sample
-    normal_idx = 0;
-  }
-
-  // Iterate through the VCF records and collect DP values for each chromosome and sample
-  ChromMedianDepth results;
-  StrUnorderedMap<vec<u32>> tumor_chr_to_dp_vec{};
-  StrUnorderedMap<vec<u32>> normal_chr_to_dp_vec{};
-  StrUnorderedMap<std::unordered_set<hts_pos_t>> chr_to_pos_set{};
-  while (const auto& record = vcf_reader.GetNextRecord()) {
-    const auto chrom = record->Chromosome();
-    if (!chr_to_pos_set[chrom].insert(record->Position()).second) {
-      // record at the same position shares the same DP value, skip it
-      continue;
-    }
-    const auto& values = record->GetFormatFieldNoCheck<s32>(kFieldDp);
-    if (0 <= tumor_idx && std::cmp_less(tumor_idx, values.size())) {
-      tumor_chr_to_dp_vec[chrom].emplace_back(values.at(tumor_idx));
-    }
-    if (0 <= normal_idx && std::cmp_less(normal_idx, values.size())) {
-      normal_chr_to_dp_vec[chrom].emplace_back(values.at(normal_idx));
-    }
-  }
-
-  // Calculate the median DP for each chromosome in the tumor sample
-  for (auto& [chrom, dp_vals] : tumor_chr_to_dp_vec) {
-    if (!dp_vals.empty()) {
-      results.tumor[chrom] = math::Median(dp_vals);
-    }
-  }
-
-  // Calculate the median DP for each chromosome in the normal sample
-  for (auto& [chrom, dp_vals] : normal_chr_to_dp_vec) {
-    if (!dp_vals.empty()) {
-      results.normal[chrom] = math::Median(dp_vals);
-    }
-  }
-
-  return results;
 }
 
 DepthTuple GetSumOfChromosomeMedianDepth(const ChromMedianDepth& chrom_median_depth) {

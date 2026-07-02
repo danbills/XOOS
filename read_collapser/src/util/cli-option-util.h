@@ -18,8 +18,8 @@ constexpr s32 kMinCompressionLevel = 1;
 constexpr s32 kMaxCompressionLevel = 9;
 
 constexpr s32 kDefaultPadding = 200;
-constexpr s32 kDefaultWiggleRoom = 4;
-constexpr s32 kDefaultWiggleRoomPartial = 2;
+constexpr s32 kDefaultWiggleRoom = 0;
+constexpr s32 kDefaultWiggleRoomPartial = 0;
 constexpr s32 kDefaultBatchSize = 300'000;
 constexpr u32 kDefaultRegionSize = 10'000;
 const u16 kDefaultExcludeFlag = BAM_FSUPPLEMENTARY | BAM_FSECONDARY;
@@ -36,6 +36,7 @@ const std::string kOptGroupNameClusterOptions = "Cluster Options";
 const std::string kOptGroupNameConsensusOptions = "Consensus Options";
 const std::string kOptGroupNameConsensusDebugOptions = "Consensus Debug Options";
 const std::string kOptGroupNamePerformanceOptions = "Performance Options";
+const std::string kOptGroupNameHiddenOptions = "";  // NOLINT
 
 struct PresetHash {
   size_t operator()(const ReadCollapserPresets& presets) const;
@@ -48,23 +49,13 @@ using PresetsMap = std::unordered_map<ReadCollapserPresets, PresetDefaultsMap, P
 const PresetsMap kMarkdupPresetsMap = {
     {ReadCollapserPresets::kWgsDuplex, {{"--cluster-by-strand", "true"}, {"--wiggle-room", "0"}}},
     {ReadCollapserPresets::kWgsSimplex,
-     {{"--cluster-by-strand", "true"},
-      {"--cluster-by-umi", "true"},
-      {"--make-clusters-of-partial-reads-only", "true"},
-      {"--wiggle-room", "0"}}},
+     {{"--make-clusters-of-partial-reads-only", "true"}, {"--wiggle-room", "2"}, {"--wiggle-room-partial", "0"}}},
     {ReadCollapserPresets::kRnaBulk, {{"--cluster-by-strand", "true"}, {"--wiggle-room", "0"}}},
 };
 
 // consensus presets
 const PresetsMap kConsensusPresetsMap = {
     {ReadCollapserPresets::kWgsDuplex, {{"--cluster-by-strand", "true"}, {"--wiggle-room", "0"}}},
-    {ReadCollapserPresets::kWgsDuplexMrd,
-     {{"--cluster-by-strand", "true"},
-      {"--wiggle-room", "2"},
-      {"--duplex-library-type", "parent-parent"},
-      {"--min-cluster-size", "1"},
-      {"--min-trim-read-support", "1"},
-      {"--max-discordant-duplex-error-percentage", "5"}}},
     {ReadCollapserPresets::kWgsDuplexCfdna,
      {{"--cluster-by-strand", "true"},
       {"--wiggle-room", "2"},
@@ -78,6 +69,12 @@ const PresetsMap kConsensusPresetsMap = {
       {"--wiggle-room-partial", "0"},
       {"--duplex-library-type", "parent-daughter"},
       {"--min-same-strand-cluster-size", "3"}}},
+    {ReadCollapserPresets::kWgsSimplex,
+     {{"--make-clusters-of-partial-reads-only", "true"},
+      {"--wiggle-room", "2"},
+      {"--wiggle-room-partial", "0"},
+      {"--min-cluster-size", "1"},
+      {"--min-trim-read-support", "1"}}},
     {ReadCollapserPresets::kTeSimplex,
      {{"--cluster-by-umi", "true"}, {"--wiggle-room", "2"}, {"--wiggle-room-partial", "0"}}},
 };
@@ -116,8 +113,14 @@ void AddConsensusClusterOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& 
 
 void AddConsensusDebugOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options, const std::string& group_name);
 
+void AddCommonHiddenOptions(cli::AppPtr app, const ReadCollapserOptionsPtr& options);
+
 void ValidateConsensusOptions(const cli::ConstAppPtr& app, const ReadCollapserOptionsPtr& options);
 
 void ValidateMarkdupOptions(const cli::ConstAppPtr& app, const ReadCollapserOptionsPtr& options);
+
+// Checks that the output directory does not contain existing output files.
+// Throws xoos::error::Error if the output path is not a directory, or if output files exist and overwrite is false.
+void ValidateOutputFilesDoNotExist(const ReadCollapserOptions& options);
 
 }  // namespace xoos::read_collapser

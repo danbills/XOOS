@@ -1,9 +1,9 @@
 #include "xoos/cli/cli.h"
 
 #include <algorithm>
+#include <locale>
 
 #include <xoos/enum/enum-util.h>
-#include <xoos/util/uuid.h>
 
 namespace xoos::cli {
 
@@ -24,15 +24,40 @@ static bool IsKeyBoolType(const CLI::Option* opt) {
  */
 static bool IsValueTrue(const std::string& value) {
   std::string lower_value = value;
-  std::transform(lower_value.begin(), lower_value.end(), lower_value.begin(), ::tolower);
+  std::ranges::transform(
+      lower_value, lower_value.begin(), [](const char c) { return std::tolower(c, std::locale::classic()); });
   return lower_value == "true" || lower_value == "1";
 }
 
-static std::string GetRenderedValue(const CLI::Option* opt, const std::string& value) {
-  if (!IsKeyBoolType(opt)) {
-    return fmt::format(" {} {}", opt->get_name(), value);
+/**
+ * Returns the CLI name of an option, handling hidden options (group == "").
+ * CLI11's get_name() returns "" when the option group is empty (hidden), so we
+ * fall back to lnames_[0] / snames_[0] directly via the public accessors.
+ */
+static std::string GetOptionCliName(const CLI::Option* const opt) {
+  auto name = opt->get_name();
+  if (!name.empty()) {
+    return name;
   }
-  return IsValueTrue(value) ? fmt::format(" {}", opt->get_name()) : "";
+  // Hidden option: get_name() returns "" because group is empty; use raw name lists
+  if (!opt->get_lnames().empty()) {
+    return "--" + opt->get_lnames()[0];
+  }
+  if (!opt->get_snames().empty()) {
+    return "-" + opt->get_snames()[0];
+  }
+  return {};
+}
+
+static std::string GetRenderedValue(const CLI::Option* opt, const std::string& value) {
+  const auto cli_name = GetOptionCliName(opt);
+  if (cli_name.empty()) {
+    return {};
+  }
+  if (!IsKeyBoolType(opt)) {
+    return fmt::format(" {} {}", cli_name, value);
+  }
+  return IsValueTrue(value) ? fmt::format(" {}", cli_name) : "";
 }
 
 /**
@@ -101,22 +126,14 @@ std::shared_ptr<CLI::App> SetupDefaultCli(const std::string& program_name, const
   auto log_level_desc = fmt::format("Log level: {}", enum_util::FormatEnumNames<log::LogLevel>());
   auto* log_level_option = app->add_option<const std::string>("-l,--log-level", log_level_desc)->default_val("info");
 
-  app->parse_complete_callback([app = app.get(), program_name, version, log_level_option]() {
+  app->parse_complete_callback([app = app.get(), version, log_level_option]() {
     Logging::Info("Version: {}", version);
-    Logging::Info("Execution ID: {}", uuid::ExecutionId().IsoDateTimeString());
+    Logging::Info("For Research Use Only. Not for use in diagnostic procedures.");
 
-    /// Render the command-line arguments for the main application. If the application has subcommands, render the
-    /// command-line arguments for each subcommand. Few of the common options (like log-level etc.) will be part of main
-    /// application. So when a subcommand will be triggered, then the program will render the subcommand-line arguments
-    /// along with common options. For example, if the main application is `copy_number_caller` and it has a subcommand
-    /// `GCCorrect`, the command-line arguments for `copy_number_caller` (mostly common options) and `GCCorrect` will be
-    /// rendered.
-    auto cli_args = RenderCli(app, program_name);
-    for (const auto& subcommand : app->get_subcommands()) {
-      auto sub_app = app->get_subcommand_ptr(subcommand);
-      cli_args += " " + RenderCli(sub_app.get(), sub_app->get_name());
-    }
-    Logging::Info("Running: {}", cli_args);
+    // Render the full command line including any active subcommands.
+    // Uses GetCommandLineInfo to share the rendering logic with VCF/TSV metadata output.
+    const auto info = GetCommandLineInfo(app);
+    Logging::Info("Running: {}", info.command_line);
 
     const auto log_level = log::ParseLogLevel(log_level_option->as<std::string>());
     if (!log_level) {
@@ -148,6 +165,30 @@ int RunCli(AppPtr app, int argc, const char* const* argv) {
   }
 
   return EXIT_SUCCESS;
+}
+
+/// Called from two contexts:
+///  1. SetupDefaultCli's parse_complete_callback (app = root) — for the "Running: ..." log line.
+///  2. Module pre-callbacks (app may be a subcommand) — for VCF/TSV metadata.
+///
+/// These run at different times: parse_complete_callback fires after parsing but before
+/// subcommand callbacks, so the root app and all active subcommands are already resolved.
+/// Module pre-callbacks fire later from within a subcommand callback, so app may point to
+/// the subcommand rather than the root. The parent traversal handles both cases, always
+/// producing the full command line with the root program name and version.
+io::CommandLineInfo GetCommandLineInfo(const ConstAppPtr app) {
+  const auto* root = app;
+  while (root->get_parent() != nullptr) {
+    root = root->get_parent();
+  }
+
+  auto cli_args = RenderFullCli(app);
+  // get_subcommands() with no arguments returns only parsed (active) subcommands, not all defined ones.
+  for (const auto* const sub : app->get_subcommands()) {
+    cli_args += " " + RenderCli(sub, sub->get_name());
+  }
+
+  return io::CommandLineInfo{.name = root->get_name(), .version = root->version(), .command_line = cli_args};
 }
 
 }  // namespace xoos::cli

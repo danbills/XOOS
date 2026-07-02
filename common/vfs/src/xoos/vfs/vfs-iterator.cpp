@@ -78,7 +78,7 @@ VirtualFileIterator begin(const VirtualFileStreamPtr& stream) {
   return VirtualFileIterator{stream};
 }
 
-VirtualFileIterator end(const VirtualFileStreamPtr& stream) {
+VirtualFileIterator end(const VirtualFileStreamPtr& /*stream*/) {
   return {};
 }
 
@@ -86,7 +86,7 @@ VirtualFileIterator begin(const VirtualFileHandlePtr& handle) {
   return VirtualFileIterator{std::make_shared<VirtualFileStream>(handle)};
 }
 
-VirtualFileIterator end(const VirtualFileHandlePtr& handle) {
+VirtualFileIterator end(const VirtualFileHandlePtr& /*handle*/) {
   return {};
 }
 

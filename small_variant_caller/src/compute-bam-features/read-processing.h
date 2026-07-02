@@ -13,7 +13,6 @@
 namespace xoos::svc {
 
 // Maximum possible base quality and mapping quality values to calculate the `weighted_depth` feature
-// TODO: confirm these values, how they were derived, and document them here
 constexpr u8 kMaxPossibleBaseQual = 138;
 constexpr u8 kMaxPossibleMapQual = 60;
 
@@ -195,17 +194,22 @@ void UpdateDerivedFeatureValues(UnifiedReferenceFeature& feature);
  * @param variant_features Collection of variant features to be updated
  * @param reference_features Collection of reference features to be updated
  * @param vids Vector of variant IDs at the same position
+ * @param include_duplex_lowbq Whether to include duplex_lowbq in duplex_dp and duplex_af calculations
  */
 void UpdateDerivedFeatureValues(VarIdToVarBamFeatures& variant_features,
                                 PosToRefBamFeatures& reference_features,
-                                const vec<VariantId>& vids);
+                                const vec<VariantId>& vids,
+                                bool include_duplex_lowbq);
 
 /**
  * @brief Update tumor-normal specific features for variant and reference features at the same position.
  * @param bam_feats Collection of BAM features to be updated
  * @param vids Vector of variant IDs at the same position
+ * @param include_duplex_lowbq Whether to include duplex_lowbq in duplex_dp and duplex_af calculations
  */
-void UpdateTumorNormalFeatures(BamRegionFeatureCollection& bam_feats, const vec<VariantId>& vids);
+void UpdateTumorNormalFeatures(BamRegionFeatureCollection& bam_feats,
+                               const vec<VariantId>& vids,
+                               bool include_duplex_lowbq);
 
 /**
  * @brief Increment unified variant feature.
@@ -214,9 +218,14 @@ void UpdateTumorNormalFeatures(BamRegionFeatureCollection& bam_feats, const vec<
  * @param baseq Read base quality supporting the variant.
  * @param distance Minimum distance of variant to alignment ends.
  * @param near_non_concordant Flag whether this position is near a non-concordant base
+ * @param read_pos 0-based position in the read for base type lookup (used for duplex base type tracking)
  */
-void IncrementFeature(
-    UnifiedVariantFeature& feature, const AlignContext& align_ctx, f64 baseq, u64 distance, bool near_non_concordant);
+void IncrementFeature(UnifiedVariantFeature& feature,
+                      const AlignContext& align_ctx,
+                      f64 baseq,
+                      u64 distance,
+                      bool near_non_concordant,
+                      u64 read_pos);
 
 /**
  * @brief Extract variant allele features for an alignment insertion operation.

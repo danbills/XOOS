@@ -1,5 +1,7 @@
 #include "io/alignment-io.h"
 
+#include <io/alignment.h>
+
 #include <xoos/error/error.h>
 #include <xoos/io/htslib-util/htslib-util.h>
 
@@ -8,54 +10,58 @@
 
 namespace xoos::read_collapser {
 
-AlignmentReader OpenAlignmentReader(const fs::path& location) {
-  auto bam = io::HtsOpen(location, "rb");
-  if (bam->format.format != htsExactFormat::sam && bam->format.format != htsExactFormat::bam) {
-    throw std::runtime_error("hts_open failed");
-  }
-
-  auto idx = io::HtsIdxLoad(location, HTS_FMT_BAI);
-  auto hdr = io::SamHdrRead(bam.get());
-  return AlignmentReader{std::move(bam), std::move(hdr), std::move(idx)};
-}
-
-vec<AlignmentReader> OpenAlignmentReaders(const fs::path& bam_filename, u32 reader_count) {
-  vec<AlignmentReader> alignment_readers;
-  alignment_readers.reserve(reader_count);
-  for (u32 i = 0; i < reader_count; ++i) {
-    alignment_readers.emplace_back(OpenAlignmentReader(bam_filename));
-  }
-  return alignment_readers;
+bool HasRescuedSecondaryTag(const bam1_t* record) {
+  const auto* tag_ptr = bam_aux_get(record, "YF");
+  return tag_ptr != nullptr && bam_aux2i(tag_ptr) == 1;
 }
 
 // Determine if the alignment in @p record should be discarded based on @p options like mapping quality and alignment
 // flags, increment appropriate values of @p metrics, and return true if the alignment should be discarded.
-bool ShouldDiscardAlignment(const ReadCollapserOptions& options, const bam1_t* record, Metrics& metrics) {
+bool ShouldDiscardRecord(const ReadCollapserOptions& options, const Alignment* const alignment_ptr, Metrics& metrics) {
   bool discard = false;
-  ++metrics.input_reads;
+  const auto* const record = alignment_ptr->record.get();
+  ++metrics.input_records;
   if (record->core.qual < options.min_mapq) {
-    ++metrics.discarded_low_mapq_reads;
+    ++metrics.discarded_low_mapq_records;
     discard = true;
   }
   if ((record->core.flag & options.exclude_flags) != 0) {
-    ++metrics.discarded_by_flags_reads;
-    discard = true;
+    // In markdup mode, secondary reads with YF:i:1 are rescued for clustering
+    // instead of being discarded, but only if BAM_FSECONDARY is the sole
+    // matching exclude flag. If any other excluded flag is set (e.g., QC fail),
+    // the read is still discarded.
+    const auto matched_flags = record->core.flag & options.exclude_flags;
+    const bool matched_only_secondary = matched_flags == BAM_FSECONDARY;
+    const bool is_rescued =
+        options.cluster_rescued_secondaries && matched_only_secondary && HasRescuedSecondaryTag(record);
+    if (!is_rescued) {
+      ++metrics.discarded_by_flags_records;
+      discard = true;
+    }
   }
   if (options.max_discordant_duplex_error_percentage) {
     const auto duplex_error_rate = GetDiscordantDuplexErrorRate(record);
     if (duplex_error_rate && *duplex_error_rate * 100.0 > *options.max_discordant_duplex_error_percentage) {
-      ++metrics.discarded_high_discordant_duplex_percentage_reads;
+      ++metrics.discarded_high_discordant_duplex_percentage_records;
+      discard = true;
+    }
+  }
+  if (options.cluster_by_umi) {
+    const bool has_umi5p = alignment_ptr->umi5p.has_value();
+    const bool has_umi3p = alignment_ptr->umi3p.has_value();
+    if (!has_umi5p && !has_umi3p) {
+      ++metrics.discarded_missing_umi_records;
       discard = true;
     }
   }
   if (discard) {
-    ++metrics.discarded_total_reads;
+    ++metrics.discarded_total_records;
   }
   return discard;
 }
 
 void ReadAlignments(const ReadCollapserOptions& options,
-                    const AlignmentReader& reader,
+                    const io::AlignmentReader& reader,
                     const Region& region,
                     vec<AlignmentPtr>& alignments) {
   const auto itr = io::SamItrQueryI(reader.idx.get(), region.tid, region.start, region.end);
@@ -75,10 +81,12 @@ void ReadAlignments(const ReadCollapserOptions& options,
     if (record->core.pos < region.start || record->core.pos >= region.end) {
       continue;
     }
-    if (ShouldDiscardAlignment(options, record.get(), metrics)) {
+    const auto alignment_ptr =
+        std::make_shared<Alignment>(std::move(record), options.cluster_by_umi, options.ignore_read_name_parsing_errors);
+    if (ShouldDiscardRecord(options, alignment_ptr.get(), metrics)) {
       continue;
     }
-    alignments.emplace_back(std::make_shared<Alignment>(std::move(record)));
+    alignments.emplace_back(alignment_ptr);
   }
 }
 
@@ -136,6 +144,9 @@ AlignmentWriter OpenAlignmentWriter(const fs::path& location, sam_hdr_t* hdr, co
 
 void WriteAlignment(const bam1_t* record, bool mark_duplicate, const io::HtsFilePtr& output) {
   auto record_modified = io::Bam1Ptr{bam_dup1(record)};
+  // Clear the existing duplicate flag if it exists, since we will set it based on our clustering results.
+  // This is to avoid the case where the input BAM has been duplicate marked by another tool.
+  record_modified->core.flag &= ~BAM_FDUP;
   if (mark_duplicate) {
     record_modified->core.flag |= BAM_FDUP;
   }
@@ -148,6 +159,9 @@ void WriteAlignment(const bam1_t* record,
                     u32 cluster_size,
                     const io::HtsFilePtr& output) {
   auto record_modified = io::Bam1Ptr{bam_dup1(record)};
+  // Clear the existing duplicate flag if it exists, since we will set it based on our clustering results.
+  // This is to avoid the case where the input BAM has been duplicate marked by another tool.
+  record_modified->core.flag &= ~BAM_FDUP;
   if (mark_duplicate) {
     record_modified->core.flag |= BAM_FDUP;
   }
@@ -175,10 +189,10 @@ void WriteAlignments(const vec<AlignmentPtr>& alignments,
   }
 }
 
-void ReadAndWriteUnmappedAlignments(const ReadCollapserOptions& options,
-                                    const CreateClusterId& create_cluster_id,
-                                    const AlignmentReader& reader,
-                                    const UnmappedAlignmentWriter& writer) {
+void ReadAndWriteUnmappedReads(const ReadCollapserOptions& options,
+                               const CreateClusterId& create_cluster_id,
+                               const io::AlignmentReader& reader,
+                               const UnmappedAlignmentWriter& writer) {
   const auto itr = io::HtsItrPtr{sam_itr_queryi(reader.idx.get(), HTS_IDX_NOCOOR, 0, 0)};
   if (itr == nullptr) {
     // If the region is unmapped and the bam file does not contain any reads, itr will be nullptr.
@@ -189,13 +203,19 @@ void ReadAndWriteUnmappedAlignments(const ReadCollapserOptions& options,
     return;
   }
   auto& metrics = ConcurrentMetrics::Get();
-  auto record = io::Bam1Ptr{bam_init1()};
-  while (io::SamItrNext(reader.bam.get(), itr.get(), record.get())) {
-    if (ShouldDiscardAlignment(options, record.get(), metrics)) {
+  while (true) {
+    auto record = io::Bam1Ptr{bam_init1()};
+    const auto has_more_reads = io::SamItrNext(reader.bam.get(), itr.get(), record.get());
+    if (!has_more_reads) {
+      break;
+    }
+    const auto alignment_ptr =
+        std::make_shared<Alignment>(std::move(record), options.cluster_by_umi, options.ignore_read_name_parsing_errors);
+    if (ShouldDiscardRecord(options, alignment_ptr.get(), metrics)) {
       continue;
     }
     ++metrics.unmapped_reads;
-    writer(create_cluster_id(), record.get());
+    writer(create_cluster_id(), alignment_ptr->record.get());
   }
 }
 

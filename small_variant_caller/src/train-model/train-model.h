@@ -1,9 +1,11 @@
 #pragma once
 
+#include <unordered_set>
+
+#include <xoos/io/metadata-util.h>
 #include <xoos/types/int.h>
 #include <xoos/types/vec.h>
 
-#include "core/command-line-info.h"
 #include "core/config.h"
 #include "core/workflow.h"
 #include "training-data-set.h"
@@ -36,7 +38,7 @@ struct TrainModelParam {
   std::optional<fs::path> output_training_data{};
   std::optional<fs::path> snv_output_training_data{};
   std::optional<fs::path> indel_output_training_data{};
-  std::optional<CommandLineInfo> command_line;
+  io::CommandLineInfo command_line;
 };
 
 void TrainModel(const TrainModelParam& param);
@@ -158,9 +160,13 @@ class TrainingController {
    * values calculated from the VCF features.
    * @param sid Sample index for which to extract positive training data from the input files.
    * @param columns Feature columns to use for extracting features from the input files.
-   * @param data TrainingDataSet2 object to insert the extracted training data into.
+   * @param data TrainingDataSet object to insert the extracted training data into.
+   * @param truth_vids Set of VariantId loaded from the truth VCF for this sample.
    */
-  void GetPositiveDataForTumorNormalWgs(size_t sid, const vec<FeatureColumn>& columns, TrainingDataSet& data);
+  void GetPositiveDataForTumorNormalWgs(size_t sid,
+                                        const vec<FeatureColumn>& columns,
+                                        TrainingDataSet& data,
+                                        const std::unordered_set<VariantId>& truth_vids);
 
   /**
    * @brief Extract positive training data in `germline-tagging` workflow for the specified sample index.
@@ -196,10 +202,14 @@ class TrainingController {
    * values calculated from the VCF features.
    * @param sid Sample index for which to extract negative training data from the input files.
    * @param columns Feature columns to use for extracting features from the input files.
-   * @param data TrainingDataSet2 object to insert the extracted training data into.
+   * @param data TrainingDataSet object to insert the extracted training data into.
+   * @param exclude_vids Set of VariantId to be excluded from the negative training data.
    * @see kDefaultNegativeLabel
    */
-  void GetNegativeDataForTumorNormalWgs(size_t sid, const vec<FeatureColumn>& columns, TrainingDataSet& data);
+  void GetNegativeDataForTumorNormalWgs(size_t sid,
+                                        const vec<FeatureColumn>& columns,
+                                        TrainingDataSet& data,
+                                        const std::unordered_set<VariantId>& exclude_vids);
 
   const TrainModelParam _param;
   SVCConfig _config;

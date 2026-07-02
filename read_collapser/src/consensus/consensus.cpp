@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <ranges>
-#include <string_view>
 #include <unordered_map>
 
 #include <htslib/sam.h>
@@ -28,6 +27,7 @@
 #include "io/alignment.h"
 #include "io/fastq-writer.h"
 #include "metrics/metrics.h"
+#include "util/cli-option-util.h"
 #include "util/duplex-util.h"
 #include "util/read-util.h"
 #include "util/softclip-util.h"
@@ -157,11 +157,12 @@ static void WriteUnmappedAlignment(const ReadCollapserOptions& options,
 static void CallConsensusOnLeftSoftclipsAndPrependResult(const vec<AlignmentPtr>& reads_in_cluster,
                                                          const ReadCollapserOptions& options,
                                                          ConsensusResult& consensus_result) {
-  const vec<std::string> left_softclips = GetLeftSoftclipSequences(reads_in_cluster);
+  const vec<SoftclipSequence> left_softclips = GetLeftSoftclipSequences(reads_in_cluster);
   const bool has_left_softclips =
-      std::ranges::any_of(left_softclips, [](const std::string_view seq) { return !seq.empty(); });
+      std::ranges::any_of(left_softclips, [](const SoftclipSequence& seq) { return !seq.sequence.empty(); });
   if (has_left_softclips) {
-    const ConsensusMatrix left_softclip_matrix = BuildConsensusMatrix(left_softclips, reads_in_cluster);
+    const ConsensusMatrix left_softclip_matrix = BuildSoftclipConsensusMatrix(
+        left_softclips, reads_in_cluster, options.duplex_library_type != HDDeconvolutionType::kNone);
     consensus_result = MajorityVotingConsensus(left_softclip_matrix, options) + consensus_result;
   }
 }
@@ -169,11 +170,12 @@ static void CallConsensusOnLeftSoftclipsAndPrependResult(const vec<AlignmentPtr>
 static void CallConsensusOnRightSoftclipsAndAppendResult(const vec<AlignmentPtr>& reads_in_cluster,
                                                          const ReadCollapserOptions& options,
                                                          ConsensusResult& consensus_result) {
-  const vec<std::string> right_softclips = GetRightSoftclipSequences(reads_in_cluster);
+  const vec<SoftclipSequence> right_softclips = GetRightSoftclipSequences(reads_in_cluster);
   const bool has_right_softclips =
-      std::ranges::any_of(right_softclips, [](const std::string_view seq) { return !seq.empty(); });
+      std::ranges::any_of(right_softclips, [](const SoftclipSequence& seq) { return !seq.sequence.empty(); });
   if (has_right_softclips) {
-    const ConsensusMatrix right_softclip_matrix = BuildConsensusMatrix(right_softclips, reads_in_cluster);
+    const ConsensusMatrix right_softclip_matrix = BuildSoftclipConsensusMatrix(
+        right_softclips, reads_in_cluster, options.duplex_library_type != HDDeconvolutionType::kNone);
     consensus_result = consensus_result + MajorityVotingConsensus(right_softclip_matrix, options);
   }
 }
@@ -207,7 +209,7 @@ static void CallConsensusAndWriteResults(const ReadCollapserOptions& options,
   for (const auto& [cluster_id, cluster] : consensus_clusters) {
     if (cluster->alignments.size() > options.max_cluster_size) {
       const auto num_reads_before_downsampling = cluster->alignments.size();
-      DownsampleReadsInCluster(cluster->alignments, options.max_cluster_size);
+      DownsampleReadsInCluster(cluster->alignments, options.max_cluster_size, cluster_id);
       const auto num_reads_after_downsampling = cluster->alignments.size();
       metrics.consensus_discarded_by_subsampling_reads +=
           (num_reads_before_downsampling - num_reads_after_downsampling);
@@ -216,7 +218,17 @@ static void CallConsensusAndWriteResults(const ReadCollapserOptions& options,
   UpdateConsensusMetrics(consensus_clusters);
   for (const auto& [cluster_id, cluster] : consensus_clusters) {
     const bool hd_deconvolve_enabled = (options.duplex_library_type != HDDeconvolutionType::kNone);
-    const bool handle_softclips = options.include_softclips;
+    bool handle_softclips = !options.skip_softclips;
+    // If trimming overhangs (soft-clip handling) would produce an empty reference span
+    // (i.e. left boundary >= right boundary), disable soft-clip handling and keep overhangs
+    // to avoid generating empty consensus sequences.
+    if (handle_softclips) {
+      const u32 leftmost_rpos = LeftmostRefPos(cluster->alignments, true);
+      const u32 rightmost_rpos = RightmostRefPos(cluster->alignments, true);
+      if (leftmost_rpos >= rightmost_rpos) {
+        handle_softclips = false;
+      }
+    }
     const ConsensusMatrix consensus_matrix =
         BuildConsensusMatrix(cluster->alignments, hd_deconvolve_enabled, handle_softclips);
     ConsensusResult consensus_result = MajorityVotingConsensus(consensus_matrix, options);
@@ -272,7 +284,7 @@ static void CallConsensusAndWriteResults(const ReadCollapserOptions& options,
 void ClusterAndConsensusSuperRegion(const ReadCollapserOptions& options,
                                     const u32 super_region_id,
                                     const SuperRegion& super_region,
-                                    const AlignmentReader& alignment_reader,
+                                    const io::AlignmentReader& alignment_reader,
                                     const AlignmentWriter& alignment_writer,
                                     const GzipFilePtr& fastq_writer,
                                     const RegionLookupTable& region_lookup_table) {
@@ -318,15 +330,18 @@ void ClusterAndConsensusSuperRegion(const ReadCollapserOptions& options,
         // If the current region is not the closest to the start position of the alignment, skip the alignment
         continue;
       }
-      if (ShouldDiscardAlignment(options, record.get(), metrics)) {
+      const auto alignment_ptr = std::make_shared<Alignment>(
+          std::move(record), options.cluster_by_umi, options.ignore_read_name_parsing_errors);
+      if (ShouldDiscardRecord(options, alignment_ptr.get(), metrics)) {
         continue;
       }
-      alignments.emplace_back(std::make_shared<Alignment>(std::move(record)));
+      alignments.emplace_back(alignment_ptr);
     }
   }
 }
 
 void FastClusterAndConsensus(const ReadCollapserOptions& options) {
+  ValidateOutputFilesDoNotExist(options);
   // Reset Metrics instance so that test cases do not share the same data (due to the static Metrics instance member)
   ConcurrentMetrics::Reset();
 
@@ -336,7 +351,7 @@ void FastClusterAndConsensus(const ReadCollapserOptions& options) {
   auto super_region_count = super_regions.size();
   Logging::Info("Processing {} super regions", super_region_count);
 
-  auto alignment_readers = OpenAlignmentReaders(options.bam_input, options.threads);
+  auto alignment_readers = io::OpenAlignmentReaders(options.bam_input, options.threads);
 
   // Only output cluster BAM if options.output_cluster_bam is true
   // Otherwise, create empty AlignmentWriter objects to avoid bad access during taskflow processing
@@ -347,8 +362,8 @@ void FastClusterAndConsensus(const ReadCollapserOptions& options) {
       // Do not write index file for BAM output because unlike mark duplicate, reads may be processed out of order for
       // consensus
       const auto hdr = alignment_readers.at(i).hdr.get();
-      io::SamHdrAddPgLine(
-          hdr, io::PgHdrLine{options.program_name, options.program_name, options.version, options.command_line});
+      const auto& info = options.command_line_info;
+      io::SamHdrAddPgLine(hdr, io::PgHdrLine{info.name, info.name, info.version, info.command_line});
       alignment_writers.emplace_back(OpenAlignmentWriter(bam_filename, hdr, false));
     } else {
       alignment_writers.emplace_back(AlignmentWriter{});
@@ -381,7 +396,7 @@ void FastClusterAndConsensus(const ReadCollapserOptions& options) {
                          &executor,
                          &region_lookup_table] {
       try {
-        const AlignmentReader& alignment_reader = alignment_readers.at(executor.this_worker_id());
+        const io::AlignmentReader& alignment_reader = alignment_readers.at(executor.this_worker_id());
         const AlignmentWriter& alignment_writer = alignment_writers.at(executor.this_worker_id());
         const GzipFilePtr& fastq_writer = fastq_writers.at(executor.this_worker_id());
         // For consensus, each super region only contains subregions on the same tid
@@ -396,7 +411,7 @@ void FastClusterAndConsensus(const ReadCollapserOptions& options) {
                                                                      const bam1_t* const record) {
             WriteUnmappedAlignment(options, alignment_writer, fastq_writer, cluster_id, record);
           };
-          ReadAndWriteUnmappedAlignments(options, create_cluster_id, alignment_reader, writer);
+          ReadAndWriteUnmappedReads(options, create_cluster_id, alignment_reader, writer);
         } else {
           ClusterAndConsensusSuperRegion(options,
                                          super_region_id,
@@ -430,7 +445,7 @@ void FastClusterAndConsensus(const ReadCollapserOptions& options) {
         histogram::ComputePercentile(metrics_total.consensus_cluster_sizes, 50);
   }
   metrics_total.WriteAllMetricsToTsv(
-      options.output_dir, ReadCollapserMode::kConsensus, options.cluster_by_umi, options.version, options.command_line);
+      options.output_dir, ReadCollapserMode::kConsensus, options, options.command_line_info);
 
   Logging::Info("Done");
 }

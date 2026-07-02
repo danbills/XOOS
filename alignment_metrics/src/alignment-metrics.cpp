@@ -13,6 +13,7 @@
 #include <taskflow/taskflow.hpp>
 
 #include <xoos/error/error.h>
+#include <xoos/io/alignment-reader.h>
 #include <xoos/log/logging.h>
 #include <xoos/types/int.h>
 #include <xoos/types/str-container.h>
@@ -20,7 +21,6 @@
 
 #include "alignment-metrics-options.h"
 #include "core/region-lookup.h"
-#include "io/alignment-reader.h"
 #include "metadata/dataset-metadata.h"
 #include "metrics-worker.h"
 
@@ -131,7 +131,7 @@ void AlignmentMetrics::CalculateMetrics() {
   // Add a separate task for calculating read-level metrics for unplaced unmapped reads
   taskflow.emplace([this]() {
     if (options.metric_types.has_read_metrics) {
-      const auto reader = OpenAlignmentFile(options.bam_input);
+      const auto reader = io::OpenAlignmentReader(options.bam_input);
       // Unmapped reads only pass filter if the user specified min-mapq 0 and did not exclude unmapped reads by flags
       const bool unmapped_reads_passed_filter = options.min_mapq == 0 && (options.exclude_flags & BAM_FUNMAP) == 0;
       final_metrics.read_metrics->UpdateUnmappedReadMetrics(
@@ -151,7 +151,7 @@ void AlignmentMetrics::CalculateMetrics() {
 
   // Write out the metrics to a file
   Logging::Info("Writing metrics to output directory: {}", options.out_dir.string());
-  final_metrics.WriteMetrics(options.out_dir, options.comments);
+  final_metrics.WriteMetrics(options.out_dir, options.command_line_info);
 
   Logging::Info("Finished writing metrics");
 }

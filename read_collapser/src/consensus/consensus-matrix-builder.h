@@ -5,6 +5,7 @@
 
 #include "consensus/consensus-matrix.h"
 #include "io/alignment.h"
+#include "util/softclip-util.h"
 
 namespace xoos::read_collapser {
 
@@ -64,11 +65,15 @@ ConsensusMatrix BuildConsensusMatrix(const InsertionMap& aligned_insertions,
  *
  * If the input sequences are empty, return an empty consensus matrix.
  *
- * @param sequences A vector of strings representing the sequences in the cluster.
+ * @param sequences_with_base_types A vector of SoftclipSequence representing the soft-clipped sequences in the cluster.
  * @param reads_in_cluster A vector of AlignmentPtr representing the reads in the cluster. Note that we do not
  * use the sequences from the alignments, but we do extract strand and duplex strand information from the alignments.
+ * @param hd_deconvolve_enabled Whether we are deconvolving duplex reads. This is needed to determine whether to
+ * populate homopolymer and duplex strand information in the consensus matrix.
  */
-ConsensusMatrix BuildConsensusMatrix(const vec<std::string>& sequences, const vec<AlignmentPtr>& reads_in_cluster);
+ConsensusMatrix BuildSoftclipConsensusMatrix(const vec<SoftclipSequence>& sequences_with_base_types,
+                                             const vec<AlignmentPtr>& reads_in_cluster,
+                                             bool hd_deconvolve_enabled);
 
 /**
  * @brief Given a vector of alignments in a cluster, find the insertions each alignment and align them.

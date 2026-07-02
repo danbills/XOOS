@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include <htslib/bgzf.h>
 #include <htslib/vcf.h>
 
 #include <xoos/log/logging.h>
@@ -33,15 +34,23 @@ VcfWriter::VcfWriter(const fs::path& vcf_file_path, VcfHeaderPtr header) : _file
   }
 }
 
-/**
- * @brief Writes a VCF header to the internal header object file.
- * @param custom_meta_data_lines
- * @param filter_lines
- * @param info_lines
- * @param format_lines
- * @param contig_lines
- * @param sample_name
- */
+VcfWriter::VcfWriter(const fs::path& vcf_file_path, VcfHeaderPtr header, NoIndex)
+    : _file(nullptr), _hdr(std::move(header)) {
+  if (vcf_file_path.string().ends_with(".gz")) {
+    _file = HtsFileSharedPtr{hts_open(vcf_file_path.c_str(), "wz"), hts_close};
+  } else {
+    _file = HtsFileSharedPtr{hts_open(vcf_file_path.c_str(), "w"), hts_close};
+  }
+  if (_hdr == nullptr) {
+    _hdr = VcfHeader::Create();
+  }
+  _file_path = vcf_file_path.string();
+
+  if (_file == nullptr) {
+    throw std::runtime_error("Could not open VCF file " + vcf_file_path.string());
+  }
+}
+
 void VcfWriter::WriteHeader(const std::vector<std::string>& custom_meta_data_lines,
                             const std::vector<FilterFieldMetadata>& filter_lines,
                             const std::vector<InfoFieldMetadata>& info_lines,
@@ -71,18 +80,6 @@ void VcfWriter::WriteHeader() const {
   _hdr->Write(_file);
 }
 
-/**
- * @brief Create a new VCF record with the specified fields.
- * @param chromosome Chromosome name
- * @param position Genomic position (1-based)
- * @param id Variant ID (e.g., rsID)
- * @param alleles Vector of alleles, including the reference allele as the first element
- * @param quality Optional quality score; if std::nullopt, sets the quality to missing
- * @param filter_name Filter name to set for the record
- * @param info_fields Info fields to set in the record, including integer, float, and string fields
- * @param format_fields Format fields to set in the record, including integer, float, and string fields
- * @return A VcfRecordPtr to the created VcfRecord
- */
 VcfRecordPtr VcfWriter::CreateRecord(const std::string& chromosome,
                                      const int position,
                                      const std::string& id,
@@ -154,6 +151,19 @@ void VcfWriter::WriteRecord(const VcfRecordPtr& record) const {
 
 void VcfWriter::Flush() {
   bcf_flush(_file.get());
+}
+
+void VcfWriter::WriteBgzfRecord(BGZF* bgzf, const VcfHeaderPtr& hdr, const VcfRecordPtr& record) {
+  kstring_t str = KS_INITIALIZE;
+  if (vcf_format(hdr->_hdr.get(), record->_record.get(), &str) < 0) {
+    ks_free(&str);
+    throw std::runtime_error("Failed to format VCF record");
+  }
+  if (bgzf_write(bgzf, str.s, str.l) < 0) {
+    ks_free(&str);
+    throw std::runtime_error("Failed to write VCF record to BGZF");
+  }
+  ks_free(&str);
 }
 
 }  // namespace xoos::io

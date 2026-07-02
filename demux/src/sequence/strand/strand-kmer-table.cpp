@@ -74,6 +74,7 @@ StrandKmerTable::StrandKmerTable(u64 max_elements, double target_load_factor)
  */
 void StrandKmerTable::InsertOrUpdate(u64 key, bool reversed) {
   // Use bitwise AND for modulo since _table_size is a power of 2.
+  // TODO: test if XXH3_64bits is fine to use instead
   const std::size_t initial_index = XXH64(&key, sizeof(key), static_cast<u64>(0)) & (_table_size - 1);
   u64 value_bits = reversed ? kForwardStrandBit : kReverseStrandBit;  // 1 forward, 0 for reverse
 

@@ -70,6 +70,9 @@ enum class UnifiedFeatureCols {
   kNonDuplex,
   kDuplex,
   kDuplexLowbq,
+  kDuplexConcordant,
+  kDuplexSimplex,
+  kDuplexDiscordant,
   kSimplex,
   kDuplexAF,
   kRefDuplexAF,
@@ -113,6 +116,9 @@ enum class UnifiedFeatureCols {
   kRefDistanceMeanLowbq,
   kRefDistanceMeanSimplex,
   kRefDuplexLowbq,
+  kRefDuplexConcordant,
+  kRefDuplexSimplex,
+  kRefDuplexDiscordant,
   kRefSimplex,
   kDuplexDP,
   kRefFamilysizeSum,
@@ -191,6 +197,7 @@ enum class UnifiedFeatureCols {
   kVcfRpaAlt,
   kVcfStr,
   kVcfAtInterest,
+  kVcfGcContent,
   kNumAlt,
   kADT,
   kADTL,
@@ -256,7 +263,9 @@ std::string GetFeatureName(const FeatureColumn& col);
 // This is a list of feature columns that are either:
 // 1. derived from read counts
 // 2. proportional to read depth
-static const std::unordered_set<UnifiedFeatureCols> kNormalizableFeatureCols{
+using FeatureColSet = std::unordered_set<UnifiedFeatureCols>;
+// clang-format off
+static const FeatureColSet kNormalizableFeatureCols{  // NOSONAR
     UnifiedFeatureCols::kWeightedDepth,
     UnifiedFeatureCols::kSupport,
     UnifiedFeatureCols::kMapqSum,
@@ -277,6 +286,9 @@ static const std::unordered_set<UnifiedFeatureCols> kNormalizableFeatureCols{
     UnifiedFeatureCols::kNonDuplex,
     UnifiedFeatureCols::kDuplex,
     UnifiedFeatureCols::kDuplexLowbq,
+    UnifiedFeatureCols::kDuplexConcordant,
+    UnifiedFeatureCols::kDuplexSimplex,
+    UnifiedFeatureCols::kDuplexDiscordant,
     UnifiedFeatureCols::kSimplex,
     UnifiedFeatureCols::kPlusOnly,
     UnifiedFeatureCols::kMinusOnly,
@@ -299,6 +311,9 @@ static const std::unordered_set<UnifiedFeatureCols> kNormalizableFeatureCols{
     UnifiedFeatureCols::kRefDistanceSumLowbq,
     UnifiedFeatureCols::kRefDistanceSumSimplex,
     UnifiedFeatureCols::kRefDuplexLowbq,
+    UnifiedFeatureCols::kRefDuplexConcordant,
+    UnifiedFeatureCols::kRefDuplexSimplex,
+    UnifiedFeatureCols::kRefDuplexDiscordant,
     UnifiedFeatureCols::kRefSimplex,
     UnifiedFeatureCols::kDuplexDP,
     UnifiedFeatureCols::kRefFamilysizeSum,
@@ -317,8 +332,8 @@ static const std::unordered_set<UnifiedFeatureCols> kNormalizableFeatureCols{
     UnifiedFeatureCols::kVcfNormalAltAd,
     UnifiedFeatureCols::kVcfTumorDp,
     UnifiedFeatureCols::kVcfNormalDp
-    // TODO : check whether values of kVcfQual and kVcfGq are proportional to read support
 };
+// clang-format on
 
 // Set of VCF feature name enums
 static const std::unordered_set<UnifiedFeatureCols> kVcfFeatureCols{UnifiedFeatureCols::kVcfNalod,
@@ -366,6 +381,7 @@ static const std::unordered_set<UnifiedFeatureCols> kVcfFeatureCols{UnifiedFeatu
                                                                     UnifiedFeatureCols::kVcfRpaAlt,
                                                                     UnifiedFeatureCols::kVcfStr,
                                                                     UnifiedFeatureCols::kVcfAtInterest,
+                                                                    UnifiedFeatureCols::kVcfGcContent,
                                                                     UnifiedFeatureCols::kADT,
                                                                     UnifiedFeatureCols::kADTL,
                                                                     UnifiedFeatureCols::kIndelAf};
@@ -419,10 +435,11 @@ struct VcfFeature {
   f32 hapdom{0};   // For each alt allele, fraction of read support that best fits the most-supported haplotype
                    // containing the allele
   std::string ru{};
-  u32 rpa_ref{0};
-  u32 rpa_alt{0};
+  s32 rpa_ref{0};
+  s32 rpa_alt{0};
   bool str{false};
   bool at_interest{false};
+  f32 gc_content{0};  // GC content in a 200-bp window centered on the variant's start position
 
   auto operator<=>(const VcfFeature&) const = default;
 };
@@ -477,6 +494,9 @@ struct UnifiedReferenceFeature {
   f64 distance_mean_lowbq{0};    // Mean of distances to alignment end among low-baseq reads
   f64 distance_mean_simplex{0};  // Mean of distances to alignment end among simplex reads
   f64 duplex_lowbq{0};           // Number of low baseq duplex reads
+  u32 duplex_concordant{0};      // Number of reads with concordant base type at reference position
+  u32 duplex_simplex{0};         // Number of reads with simplex base type at reference position
+  u32 duplex_discordant{0};      // Number of reads with discordant base type at reference position
   u32 simplex{0};                // Number of simplex reads
   f64 duplex_af{0};
   f64 duplex_dp{0};
@@ -509,6 +529,10 @@ struct UnifiedReferenceFeature {
 
 // zero-initialized UnifiedReferenceFeature, this is used when no reference BAM feature is found
 static const UnifiedReferenceFeature kZeroUnifiedReferenceFeature{};
+
+// duplex_lowbq is stored as a fractional count (0.5 per read); multiply by this factor to
+// convert to an integer read count for VCF output.
+static constexpr u32 kDuplexLowbqToCountFactor = 2;
 
 // unified features set for variant (ALT) supporting reads
 struct UnifiedVariantFeature {
@@ -557,6 +581,9 @@ struct UnifiedVariantFeature {
   u32 nonduplex{0};             // Number of nonduplex reads
   u32 duplex{0};                // Number of duplex reads
   f64 duplex_lowbq{0};          // Number of low-baseq duplex reads
+  u32 duplex_concordant{0};     // Number of reads with concordant base type at variant position
+  u32 duplex_simplex{0};        // Number of reads with simplex base type at variant position
+  u32 duplex_discordant{0};     // Number of reads with discordant base type at variant position
   u32 simplex{0};               // Number of simplex reads
   u32 plusonly{0};              // Number of plus-only reads
   u32 minusonly{0};             // Number of minus-only reads
@@ -572,7 +599,7 @@ struct UnifiedVariantFeature {
   std::vector<std::string> filter_status{};  // List of failure reasons for variant when filtered
   f64 adt{0};
   f64 adtl{0};
-  f64 indel_af{0};  // TODO : Generalize this feature name? Its calculation is not specific to indels.
+  f64 indel_af{0};
 
   auto operator<=>(const UnifiedVariantFeature&) const = default;
 

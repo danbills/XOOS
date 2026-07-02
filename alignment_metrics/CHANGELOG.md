@@ -7,6 +7,13 @@ All notable changes to Alignment Metrics will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+### Changed
+
+- Replaced legacy metadata in TSV outputs with structured `##RocheCommandLine=<...>` metadata format. All TSV files now include tool name, version, and full command line in a single metadata line.
+- Zero coverage positions are now included in the calculation of mean, median, percentiles, and ratio metrics when a BED file is provided. This produces more accurate statistics when metrics are restricted to specific regions.
+
 ## [1.0.0]
 
 ### Added
@@ -19,3 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Subcommands: `read`, `coverage`, `accuracy`, `all`.
 - YC tag base-type decoding for SBX duplex and simplex chemistries, with `--disable-base-type-decoding` for standard BAM files.
 - Configurable read filtering via `--exclude-flags`, `--min-mapq`, and trimming of leading/trailing bases.
+
+<!-- Version comparison links -->
+[1.1.0]: https://github.com/Roche-AXELIOS/XOOS/compare/1.0.0...1.1.0
+[1.0.0]: https://github.com/Roche-AXELIOS/XOOS/releases/tag/1.0.0

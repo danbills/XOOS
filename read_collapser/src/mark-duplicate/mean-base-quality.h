@@ -14,10 +14,9 @@ namespace xoos::read_collapser {
 f64 MeanBaseQ(const AlignmentPtr& alignment);
 
 /**
- * Find the alignment in @p alignments with the maximum mean base quality. If multiple alignments have the same mean
- * base quality, the first alignment with the maximum mean base quality is returned. If @p alignments is empty, nullptr.
- *
- * This method is used to determine which alignment should not be marked as a duplicate during duplicate marking.
+ * Find the best representative alignment from @p alignments for duplicate marking.
+ * The alignment with the highest mean base quality is selected. Full-length reads are preferred over partial reads.
+ * Ties are broken by input order (first occurrence wins). Returns nullptr if @p alignments is empty.
  */
 AlignmentPtr FindAlignmentWithMaxMeanBaseQ(const vec<AlignmentPtr>& alignments);
 

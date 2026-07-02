@@ -22,6 +22,8 @@ struct AdapterDesignBundle {
 
   std::vector<std::tuple<BarcodeType, SeqMatcherPtr>> adapter_3p;
   SeqMatcherPtr GetMatcher3p(const BarcodeType& type) const;
+
+  AdapterDesign design;
 };
 
 /**

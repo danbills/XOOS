@@ -41,26 +41,18 @@ static void ParseFileList(const std::string& argument_name, const fs::path& list
 }
 
 /**
- * @brief Helper function to define CLI options for the main application.
- * These options are either required or important in this submodule, or they are common to all other submodules in SVC.
- * @param app Main application pointer where CLI options will be defined.
- * @param params Shared pointer to CLI parameters to store parsed option values
- */
-static void AddMainOptions(CLI::App* const app, const TrainModelParamPtr& params) {
-  AddWarnAsErrorOption(app);
-
-  AddThreadCountOption(app, cli_opt_name::kThreads, params->threads);
-
-  app->add_option(cli_opt_name::kConfig, params->config_file, "Path to config JSON file");
-}
-
-/**
  * @brief Helper function to add core CLI options for subcommands. CLI options added here are common across all
  * subcommands.
  * @param sub Subcommand application pointer where CLI options are to be added
  * @param params Shared pointer to CLI parameters to store parsed option values
  */
-static void AddCoreOptions(CLI::App* const sub, const TrainModelParamPtr& params) {
+static void AddCommonOptions(CLI::App* const sub, const TrainModelParamPtr& params) {
+  AddWarnAsErrorOption(sub);
+
+  AddThreadCountOption(sub, cli_opt_name::kThreads, params->threads);
+
+  sub->add_option(cli_opt_name::kConfig, params->config_file, "Path to config JSON file");
+
   auto* const opt = sub->add_option_function<fs::path>(
                            cli_opt_name::kPosBamFeatures,
                            [&params](const fs::path& value) {
@@ -271,15 +263,13 @@ static void AddGermlineTaggingSpecificOptions(const CLI::App* const app, const T
 }
 
 void train_model::DefineOptions(CLI::App* const app, TrainModelParamPtr& params) {
-  AddMainOptions(app, params);
-
   // Add a subcommand for each workflow
   for (const Workflow workflow : kSupportedWorkflows) {
     const std::string name = enum_util::FormatEnumName(workflow);
     const std::string desc = fmt::format("Train model for the {} workflow", name);
     CLI::App* const sub = app->add_subcommand(name, desc)->fallthrough();
     // Do not apply force_callback() to subcommand options to avoid overwriting params set by other subcommands
-    AddCoreOptions(sub, params);
+    AddCommonOptions(sub, params);
     const auto defaults = SVCConfig(workflow);
     cli::AddEnumOption(sub,
                        cli_opt_name::kNormalizeFeatures,
@@ -345,7 +335,7 @@ static void ApplyConfig(const CLI::App* const sub, const TrainModelParamPtr& par
 }
 
 void train_model::PreCallback(const cli::ConstAppPtr app, const TrainModelParamPtr& params) {
-  params->command_line = GetCommandLineInfo(app);
+  params->command_line = cli::GetCommandLineInfo(app);
 
   // Check which subcommand was used, set workflow and config accordingly, and apply config defaults as needed
   for (const Workflow workflow : kSupportedWorkflows) {

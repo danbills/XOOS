@@ -30,7 +30,7 @@ void GetGTIndexes(const vec<VariantId>& vids,
                   vec<size_t>& gt12_indexes,
                   u32& num_fail,
                   vec<size_t>& gt01_11_indexes,
-                  const vec<GenotypeScore>& ml_genotypes);
+                  const vec<PredictionScore>& ml_genotypes);
 
 /**
  * @brief Update VCF record fields based on genotype classification for germline variants.
@@ -159,7 +159,7 @@ void FailRecord(const io::VcfRecordPtr& record, const std::string& fail_id, cons
 std::optional<s64> ReconcileGermlineDiploidRecords(const vec<VariantId>& vids,
                                                    const vec<io::VcfRecordPtr>& in_records,
                                                    const vec<io::VcfRecordPtr>& alt_wildcard_records,
-                                                   const vec<GenotypeScore>& ml_genotypes,
+                                                   const vec<PredictionScore>& ml_genotypes,
                                                    vec<io::VcfRecordPtr>& out_records,
                                                    const vec<io::InfoFieldMetadata>& info_metadata,
                                                    const vec<io::FormatFieldMetadata>& fmt_metadata);
@@ -194,7 +194,7 @@ std::optional<s64> ReconcileGermlineDiploidRecords(const vec<VariantId>& vids,
  */
 void ReconcileGermlineHaploidRecords(const vec<VariantId>& vids,
                                      const vec<io::VcfRecordPtr>& in_records,
-                                     const vec<GenotypeScore>& ml_genotypes,
+                                     const vec<PredictionScore>& ml_genotypes,
                                      vec<io::VcfRecordPtr>& out_records);
 
 /**
@@ -219,7 +219,7 @@ void ReconcileGermlineHaploidRecords(const vec<VariantId>& vids,
  */
 void ReconcileGermlineDiploidSingleRecord(const vec<VariantId>& vids,
                                           const vec<io::VcfRecordPtr>& in_records,
-                                          const vec<GenotypeScore>& ml_genotypes,
+                                          const vec<PredictionScore>& ml_genotypes,
                                           const vec<io::VcfRecordPtr>& alt_wildcard_records,
                                           vec<io::VcfRecordPtr>& out_records,
                                           std::optional<s64>& gt12_01_max_ref_pos,
@@ -248,7 +248,7 @@ void ReconcileGermlineDiploidSingleRecord(const vec<VariantId>& vids,
  */
 void ReconcileGermlineDiploidTwoPassingGT12Records(const vec<VariantId>& vids,
                                                    const vec<io::VcfRecordPtr>& in_records,
-                                                   const vec<GenotypeScore>& ml_genotypes,
+                                                   const vec<PredictionScore>& ml_genotypes,
                                                    vec<io::VcfRecordPtr>& out_records,
                                                    std::optional<s64>& gt12_01_max_ref_pos,
                                                    const vec<size_t>& gt12_indexes,
@@ -277,7 +277,7 @@ void ReconcileGermlineDiploidTwoPassingGT12Records(const vec<VariantId>& vids,
  */
 void ReconcileGermlineDiploidSinglePassingFromMultiple(const vec<VariantId>& vids,
                                                        const vec<io::VcfRecordPtr>& in_records,
-                                                       const vec<GenotypeScore>& ml_genotypes,
+                                                       const vec<PredictionScore>& ml_genotypes,
                                                        vec<io::VcfRecordPtr>& out_records,
                                                        std::optional<s64>& gt12_01_max_ref_pos,
                                                        const vec<size_t>& gt01_11_indexes);
@@ -307,7 +307,7 @@ void ReconcileGermlineDiploidSinglePassingFromMultiple(const vec<VariantId>& vid
  */
 void ReconcileGermlineDiploidTwoPassingMix(const vec<VariantId>& vids,
                                            const vec<io::VcfRecordPtr>& in_records,
-                                           const vec<GenotypeScore>& ml_genotypes,
+                                           const vec<PredictionScore>& ml_genotypes,
                                            vec<io::VcfRecordPtr>& out_records,
                                            std::optional<s64>& gt12_01_max_ref_pos,
                                            const vec<size_t>& gt01_12_indexes,

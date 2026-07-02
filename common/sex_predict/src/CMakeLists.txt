@@ -1,5 +1,4 @@
-add_library(xoos_sex_predict
-        STATIC
+add_default_library(xoos_sex_predict
         xoos/sex_predict/sex.cpp
         xoos/sex_predict/sex-predictor.cpp
         xoos/sex_predict/vcf-sex-predictor.cpp

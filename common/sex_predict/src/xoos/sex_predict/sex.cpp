@@ -1,5 +1,6 @@
 #include "sex.h"
 
+#include <locale>
 #include <map>
 #include <vector>
 
@@ -24,7 +25,7 @@ Sex ParseSexOption(const std::string& sex) {
   };
   // set the first character to upper_case
   // extract the first character of sex and set it to upper case
-  return choose_sex(static_cast<char>(std::toupper(sex[0])));
+  return choose_sex(std::toupper(sex[0], std::locale::classic()));
 }
 
 std::string GetDescriptionForSex(const Sex sex) {

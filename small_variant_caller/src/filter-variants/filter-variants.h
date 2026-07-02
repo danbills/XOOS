@@ -4,18 +4,21 @@
 #include <string>
 #include <vector>
 
+#include <xoos/io/metadata-util.h>
 #include <xoos/io/vcf/vcf-header.h>
 #include <xoos/io/vcf/vcf-reader.h>
 #include <xoos/io/vcf/vcf-record.h>
-#include <xoos/io/vcf/vcf-writer.h>
 #include <xoos/types/float.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
 #include <xoos/yc-decode/yc-decoder.h>
 
-#include "core/command-line-info.h"
+#include "core/aligner-type.h"
 #include "core/config.h"
+#include "core/duplex-lowbq-mode.h"
 #include "core/genotype.h"
+#include "core/run-type.h"
+#include "core/sample-type.h"
 #include "core/workflow.h"
 #include "core/yc-decode-method.h"
 #include "filter-region.h"
@@ -57,18 +60,21 @@ struct FilterVariantsParam {
   f32 hotspot_weighted_counts_threshold{};
   f32 ml_threshold{};
   std::optional<std::string> tumor_sample_name{};
-  f32 somatic_tn_snv_ml_threshold{};
-  f32 somatic_tn_indel_ml_threshold{};
-  u32 tumor_support_threshold{};
+  f32 snv_min_ml_score{};
+  f32 indel_min_ml_score{};
+  u32 min_tumor_support{};
+  u32 max_normal_support{};
+  f32 min_tumor_af{};
+  f32 min_dp_ratio{};
+  u32 max_indel_size{};
   f32 hotspot_ml_threshold{};
   bool phased{};
   SequencingProtocol sequencing_protocol{SequencingProtocol::kDuplex};
   HomopolymerFilter filter_homopolymer{HomopolymerFilter::kNone};
   u32 min_homopolymer_length{};
-  std::optional<CommandLineInfo> command_line;
+  std::optional<io::CommandLineInfo> command_line;
   u32 max_bam_region_size_per_thread{};
   u32 max_vcf_region_size_per_thread{};
-  u32 output_vcf_buffer_size{};
   FeatureNormalization normalize_features{FeatureNormalization::kNone};
   std::string sd_chr_name{};
   std::optional<fs::path> par_bed_x{};
@@ -76,6 +82,13 @@ struct FilterVariantsParam {
   std::optional<fs::path> skip_variants_vcf{};
   YcDecodeMethod decode_yc{YcDecodeMethod::kNone};
   yc_decode::BaseType min_base_type;
+  std::optional<fs::path> shap_value_tsv{};
+  std::optional<fs::path> snv_shap_value_tsv{};
+  std::optional<fs::path> indel_shap_value_tsv{};
+  DuplexLowbqMode duplex_lowbq{DuplexLowbqMode::kInclude};
+  SampleType sample_type{SampleType::kFfpe};
+  AlignerType aligner{AlignerType::kBwa};
+  RunType run_type{RunType::kSbxd};
 };
 
 const std::string kDefaultChrXName{"chrX"};
@@ -96,9 +109,15 @@ class FilterVariantsClass {
   io::VcfHeaderPtr _hdr;
   StrMap<std::string> _ref_seqs;
   vec<TargetRegion> _partitioned_regions;
+  VcfPreScanResult _pre_scan;
   GlobalContext _global_ctx;
   vec<FilterRegionClass> _workers;
   AlignmentReaderCache _alignment_reader_cache;
+  std::shared_ptr<LockedTsvWriter> _shap_value_writer{};
+  // SNV and indel SHAP values writers are intended for germline and germline-multi-sample workflows, which have
+  // separate models for SNVs and indels and thus separate SHAP values output files.
+  std::shared_ptr<LockedTsvWriter> _snv_shap_value_writer{};
+  std::shared_ptr<LockedTsvWriter> _indel_shap_value_writer{};
 
  public:
   explicit FilterVariantsClass(const FilterVariantsParam& param)
@@ -166,6 +185,11 @@ class FilterVariantsClass {
    */
   void SetReferenceSequences();
 
+  void SetShapValueTsvWriters();
+
+  /// Add duplex FORMAT header lines (ADC, ADS, ADD, ADL) if the sequencing protocol is duplex.
+  void AddDuplexFormatLines() const;
+
   /**
    * @brief Set up the global context required for filtering variants. This sets parameters required for BAM feature
    * extraction and workflow specific filtering parameters that do not change between regions.
@@ -177,15 +201,14 @@ class FilterVariantsClass {
   void SetGlobalContext();
 
   /**
-   * @brief Perform parallel filtering of variants in the input VCF file based on the specified parameters and model
-   * configuration. This function creates a global context and worker contexts for each thread, and uses taskflow to
-   * execute parallel filtering and output writing tasks, filtering regions of the input VCF in parallel and writing VCF
-   * records out in sorted order to the specified output file.
-   * @param out_file A VCF output file to write records to.
+   * @brief Perform parallel filtering of variants in the input VCF file. Uses Taskflow to run one filter task per
+   * region. Each completed region's results are pushed to a queue and written to a per-region temp BGZF file by a
+   * dedicated writer thread. After all regions are processed, the header and per-region data files are concatenated
+   * at the BGZF block level into the final output — no record-level re-reading.
    *
    * @note This function assumes that _partitioned_regions has been set and _ref_seqs populated prior to being called.
    */
-  void ParallelFiltering(const io::VcfWriter& out_file);
+  void ParallelFiltering();
 };
 
 }  // namespace xoos::svc

@@ -1,8 +1,8 @@
 [requires]
-catch2/3.8.0
-cli11/2.4.2
-fmt/11.0.2
-xoos-htslib/1.21
+catch2/3.14.0
+cli11/2.6.0
+fmt/12.1.0
+xoos-htslib/1.23.1
 
 # common::io
 ms-gsl/4.1.0
@@ -10,10 +10,7 @@ nlohmann_json/3.11.3
 vincentlaucsb-csv-parser/2.3.0
 
 # common::log
-spdlog/1.15.0
-
-# common::util
-stduuid/1.2.3
+spdlog/1.17.0
 
 # common::enum
 magic_enum/0.9.7

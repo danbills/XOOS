@@ -105,10 +105,9 @@ void Sink::AddSinkWorker() {
       output_path = output_path / fmt::format("{}{}", _input_name, extension);
     }
 
-    if (_sid_nr == 0) {
-      // special case for unassigned reads
-      output_path = _path / fmt::format("{}.{:02}{}", _input_name, sink_nr, extension);
-    }
+    // Track the output file path for post-processing rename to Everest naming convention.
+    _exec.RegisterOutputFile(output_path, _input_name);
+
     if (fs::exists(output_path)) {
       if (_exec.param.overwrite) {
         // delete the file if it already exists and we are allowed to overwrite

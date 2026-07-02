@@ -85,10 +85,10 @@ std::vector<std::string> ReadMetricsSummary::GetHeaders() {
   return {kNameMetricName, kNameCount, kNameDenominator, kNamePercentage};
 }
 
-void ReadMetricsSummary::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void ReadMetricsSummary::WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const {
   std::ofstream ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(ofstream);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(ofstream, command_line_info);
   writer << GetHeaders();
   writer << std::make_tuple(
       kNameTotalAlignmentsIncludingUnmapped, alignments_plus_unmapped_reads, kNotApplicable, kNotApplicable);

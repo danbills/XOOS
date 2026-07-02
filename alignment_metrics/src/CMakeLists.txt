@@ -1,5 +1,4 @@
-add_library(alignment_metrics_core
-        STATIC
+add_default_library(alignment_metrics_core
         core/alignment.cpp
         core/hp-error-for-read.cpp
         core/interval.cpp
@@ -7,7 +6,6 @@ add_library(alignment_metrics_core
         core/region-lookup.cpp
         core/substitution-lookup.cpp
         core/super-region.cpp
-        io/alignment-reader.cpp
         io/bed-reader.cpp
         metadata/alignment-metadata.cpp
         metadata/dataset-metadata.cpp

@@ -12,14 +12,15 @@
 #include <xoos/types/str-container.h>
 #include <xoos/types/vec.h>
 #include <xoos/util/container-functions.h>
-#include <xoos/util/string-functions.h>
 
 #include "compute-vcf-features/compute-vcf-features.h"
 #include "core/filtering.h"
+#include "core/sequencing-protocol.h"
 #include "core/variant-feature-extraction.h"
 #include "core/vcf-fields.h"
 #include "germline-tagging.h"
 #include "reconcile-germline.h"
+#include "shap-value-tsv.h"
 #include "tumor-normal-processing.h"
 #include "tumor-only-te-processing.h"
 #include "util/log-util.h"
@@ -34,64 +35,65 @@ namespace xoos::svc {
  * @param record VCF record to be updated
  * @param bam_feat BAM features
  * @param vcf_feat VCF features
- * @param ref_feat Reference features
+ * @param is_duplex_protocol Whether the sequencing protocol is duplex
  */
-static void UpdateGermlineRecordWithFeatures(const io::VcfRecordPtr& record,
-                                             const BamFeatureTuple& bam_feat,
-                                             const VcfFeature& vcf_feat) {
+void UpdateGermlineRecordWithFeatures(const io::VcfRecordPtr& record,
+                                      const BamFeatureTuple& bam_feat,
+                                      const VcfFeature& vcf_feat,
+                                      const bool is_duplex_protocol) {
   const auto& bam_ref_feat = bam_feat.ref_feat;
   const auto& bam_var_feat = bam_feat.var_feat;
-  record->SetFormatField<s32>(kGermlineMLId, {1});
+  record->SetFormatField(kGermlineMLId, vec<s32>{1});
   // "lowbq" features are incremented by 0.5 per read, so they are not always an integer
   // To be consistent for both AD and DP fields, use `std::round()` to convert to nearest integer
-  record->SetFormatField<s32>(kAlleleDepthId,
-                              {static_cast<s32>(std::round(bam_ref_feat.support + bam_ref_feat.duplex_lowbq)),
-                               static_cast<s32>(std::round(bam_var_feat.support + bam_var_feat.duplex_lowbq))});
-  record->SetFormatField<s32>(kFieldDp, {static_cast<s32>(std::round(bam_ref_feat.duplex_dp))});
-  record->SetFormatField<f32>(kGermlineGnomadAFId, {vcf_feat.popaf});
-  record->SetFormatField<f32>(kGermlineRefAvgMapqId, {static_cast<f32>(bam_ref_feat.mapq_mean)});
-  record->SetFormatField<f32>(kGermlineAltAvgMapqId, {static_cast<f32>(bam_var_feat.mapq_mean)});
-  record->SetFormatField<f32>(kGermlineRefAvgDistId, {static_cast<f32>(bam_ref_feat.distance_mean)});
-  record->SetFormatField<f32>(kGermlineAltAvgDistId, {static_cast<f32>(bam_var_feat.distance_mean)});
-  record->SetFormatField<f32>(kGermlineDensity100BPId, {static_cast<f32>(vcf_feat.variant_density)});
+  record->SetFormatField(kAlleleDepthId,
+                         vec<s32>{static_cast<s32>(std::round(bam_ref_feat.support + bam_ref_feat.duplex_lowbq)),
+                                  static_cast<s32>(std::round(bam_var_feat.support + bam_var_feat.duplex_lowbq))});
+  record->SetFormatField(kFieldDp, vec<s32>{static_cast<s32>(std::round(bam_ref_feat.duplex_dp))});
+  record->SetFormatField(kGermlineGnomadAFId, vec<f32>{vcf_feat.popaf});
+  record->SetFormatField(kGermlineRefAvgMapqId, vec<f32>{static_cast<f32>(bam_ref_feat.mapq_mean)});
+  record->SetFormatField(kGermlineAltAvgMapqId, vec<f32>{static_cast<f32>(bam_var_feat.mapq_mean)});
+  record->SetFormatField(kGermlineRefAvgDistId, vec<f32>{static_cast<f32>(bam_ref_feat.distance_mean)});
+  record->SetFormatField(kGermlineAltAvgDistId, vec<f32>{static_cast<f32>(bam_var_feat.distance_mean)});
+  record->SetFormatField(kGermlineDensity100BPId, vec<f32>{static_cast<f32>(vcf_feat.variant_density)});
+  if (is_duplex_protocol) {
+    record->SetFormatField(
+        kDuplexConcordantCountsId,
+        vec<s32>{static_cast<s32>(bam_ref_feat.duplex_concordant), static_cast<s32>(bam_var_feat.duplex_concordant)});
+    record->SetFormatField(
+        kDuplexSimplexCountsId,
+        vec<s32>{static_cast<s32>(bam_ref_feat.duplex_simplex), static_cast<s32>(bam_var_feat.duplex_simplex)});
+    record->SetFormatField(
+        kDuplexDiscordantCountsId,
+        vec<s32>{static_cast<s32>(bam_ref_feat.duplex_discordant), static_cast<s32>(bam_var_feat.duplex_discordant)});
+    record->SetFormatField(
+        kDuplexLowbqCountsId,
+        vec<s32>{static_cast<s32>(std::round(bam_ref_feat.duplex_lowbq * kDuplexLowbqToCountFactor)),
+                 static_cast<s32>(std::round(bam_var_feat.duplex_lowbq * kDuplexLowbqToCountFactor))});
+  }
 }
 
-/**
- * @brief Update a copied VCF record for the germline workflow. Copies the original DP, AD, GT, and ALT fields from the
- * original VCF record to the copied record using GATK-specific field IDs.
- * @param original_record Original VCF record
- * @param record_copy Copied VCF record
- */
-static void UpdateGermlineRecordCopy(const io::VcfRecordPtr& original_record, const io::VcfRecordPtr& record_copy) {
-  const auto& dp_values = original_record->GetFormatFieldNoCheck<s32>(kFieldDp);
-  const auto& ad_values = original_record->GetFormatFieldNoCheck<s32>(kFieldAd);
-  // note that AD and ALT values from multi-allelic records are not split here
-  const std::string& gt_value = original_record->GetGTField();
-  vec<std::string> alt_vec;
-  for (s32 i = 1; i < original_record->NumAlleles(); ++i) {
-    alt_vec.emplace_back(original_record->Allele(i));
-  }
-  const std::string alt_string = string::Join(alt_vec, ",");
-  record_copy->SetFormatField<s32>(kGermlineGATKDPId, dp_values);
-  record_copy->SetFormatField<s32>(kGermlineGATKADId, ad_values);
-  record_copy->SetFormatField<std::string>(kGermlineGATKGTId, {gt_value});
-  record_copy->SetFormatField<std::string>(kGermlineGATKAltId, {alt_string});
+void FilterRegionClass::ResetTmpStorage() {
+  _tmp_vids = {};
+  _tmp_records = {};
+  _tmp_genotypes = {};
+  _tmp_alt_wildcard_records = {};
 }
 
 void FilterRegionClass::FilterGermlineRecord(const io::VcfRecordPtr& record,
                                              const VarIdToVcfFeatures& vcf_features,
                                              const BamRegionFeatureCollection& bam_features,
                                              const DepthTuple& normalize_target,
-                                             vec<io::VcfRecordPtr>& out_records) {
+                                             RegionResult& result) {
   using enum VariantType;
   using enum Genotype;
   const auto& chrom = record->Chromosome();
   const auto pos = static_cast<u64>(record->Position());
   const auto snv_calculator = [&snv_calc = _worker_ctx->calculators.at(0)](const auto& feature_vec) {
-    return snv_calc.CalculateScoreGermline(feature_vec);
+    return snv_calc.CalculateGermlineScore(feature_vec);
   };
   const auto& indel_calculator = [&indel_calc = _worker_ctx->calculators.at(1)](const auto& feature_vec) {
-    return indel_calc.CalculateScoreGermline(feature_vec);
+    return indel_calc.CalculateGermlineScore(feature_vec);
   };
   const auto& snv_scoring_cols = _global_ctx.model_config.snv_scoring_cols;
   const auto& indel_scoring_cols = _global_ctx.model_config.indel_scoring_cols;
@@ -100,11 +102,10 @@ void FilterRegionClass::FilterGermlineRecord(const io::VcfRecordPtr& record,
   // a VCF record can have >=1 ALT allele
   for (auto& record_copy :
        SplitMultiAllelicRecord(record, _hdr, _global_ctx.vcf_info_metadata, _global_ctx.vcf_fmt_metadata, true)) {
-    UpdateGermlineRecordCopy(record, record_copy);
     if (!ref_acgt_only) {
       // REF/ALT contains non-ACGT; copy the record and set FILTER to FAIL
       FailRecord(record_copy, kFilteringNonAcgtRefAltId, kGT00);
-      out_records.emplace_back(record_copy);
+      result.out_records.emplace_back(record_copy);
       continue;
     }
     const auto& ref = record_copy->Allele(0);
@@ -131,22 +132,33 @@ void FilterRegionClass::FilterGermlineRecord(const io::VcfRecordPtr& record,
       _tmp_records.emplace_back(record_copy);
 
       // update the VCF record with ML features
-      UpdateGermlineRecordWithFeatures(record_copy, bam_feat.value(), vcf_feat.value());
+      UpdateGermlineRecordWithFeatures(record_copy,
+                                       bam_feat.value(),
+                                       vcf_feat.value(),
+                                       IsDuplexProtocol(_global_ctx.bam_feat_params.sequencing_protocol));
 
       // classify the preliminary genotype and append it to the temporary vector
       if (vid.type == kSNV) {
         const auto& feature_vec =
             GetFeatureVec(snv_scoring_cols, vid, bam_feat.value(), vcf_feat.value(), normalize_target);
-        _tmp_genotypes.emplace_back(snv_calculator(feature_vec));
+        auto prediction = snv_calculator(feature_vec);
+        if (!prediction.shap_values.empty()) {
+          result.snv_shap_value_rows.emplace_back(AssembleShapValueTsvRow(vid, prediction));
+        }
+        _tmp_genotypes.emplace_back(std::move(prediction));
       } else {
         const auto& feature_vec =
             GetFeatureVec(indel_scoring_cols, vid, bam_feat.value(), vcf_feat.value(), normalize_target);
-        _tmp_genotypes.emplace_back(indel_calculator(feature_vec));
+        auto prediction = indel_calculator(feature_vec);
+        if (!prediction.shap_values.empty()) {
+          result.indel_shap_value_rows.emplace_back(AssembleShapValueTsvRow(vid, prediction));
+        }
+        _tmp_genotypes.emplace_back(std::move(prediction));
       }
     } else {
       // features not found; copy the record and set FILTER to FAIL
       FailRecord(record_copy, kFilteringMissingFeatureId, kGT00);
-      out_records.emplace_back(record_copy);
+      result.out_records.emplace_back(record_copy);
     }
   }
 }
@@ -154,15 +166,16 @@ void FilterRegionClass::FilterGermlineRecord(const io::VcfRecordPtr& record,
 void FilterRegionClass::FilterGermlineTaggingRecord(const io::VcfRecordPtr& record,
                                                     const VarIdToVcfFeatures& vcf_features,
                                                     const BamRegionFeatureCollection& bam_features,
-                                                    const DepthTuple& normalize_target) {
+                                                    const DepthTuple& normalize_target,
+                                                    vec<vec<std::string>>& shap_value_rows) {
   using enum VariantType;
   using enum Genotype;
   const auto& chrom = record->Chromosome();
   const auto pos = static_cast<u64>(record->Position());
-  const auto snv_min_score = _global_ctx.somatic_tn_snv_ml_threshold;
-  const auto indel_min_score = _global_ctx.somatic_tn_indel_ml_threshold;
+  const auto snv_min_score = _global_ctx.snv_min_ml_score;
+  const auto indel_min_score = _global_ctx.indel_min_ml_score;
   const auto calculator = [&calc = _worker_ctx->calculators.front()](const auto& feature_vec, const f64 min_score) {
-    return calc.CalculateScoreGermline(feature_vec, min_score);
+    return calc.CalculateGermlineScore(feature_vec, min_score);
   };
   const auto& scoring_cols = _global_ctx.model_config.scoring_cols;
   const bool ref_acgt_only = ContainsOnlyACTG(record->Allele(0));
@@ -197,9 +210,14 @@ void FilterRegionClass::FilterGermlineTaggingRecord(const io::VcfRecordPtr& reco
       _tmp_vids.emplace_back(vid);
       _tmp_records.emplace_back(record_copy);
       // classify the preliminary genotype and append it to the temporary vector
-      const auto& feature_vec = GetFeatureVec(scoring_cols, vid, bam_feat.value(), vcf_feat.value(), normalize_target);
+      const auto& scoring_target = _global_ctx.normalize_scoring_features ? normalize_target : kZeroDepthTuple;
+      const auto& feature_vec = GetFeatureVec(scoring_cols, vid, bam_feat.value(), vcf_feat.value(), scoring_target);
       const auto min_score = vid.type == kSNV ? snv_min_score : indel_min_score;
-      _tmp_genotypes.emplace_back(calculator(feature_vec, min_score));
+      auto prediction = calculator(feature_vec, min_score);
+      if (!prediction.shap_values.empty()) {
+        shap_value_rows.emplace_back(AssembleShapValueTsvRow(vid, prediction));
+      }
+      _tmp_genotypes.emplace_back(std::move(prediction));
     } else {
       _tmp_vids.emplace_back(vid);
       // features not found; copy the record and set FILTER to FAIL
@@ -250,10 +268,7 @@ void FilterRegionClass::ReconcileGermlineFeatures(const TargetRegion& region,
     }
 
     // reset temp storage of variant records and features
-    _tmp_vids = {};
-    _tmp_records = {};
-    _tmp_genotypes = {};
-    _tmp_alt_wildcard_records = {};
+    ResetTmpStorage();
   }
   prev_pos = pos;
 }
@@ -270,10 +285,7 @@ void FilterRegionClass::ReconcileGermlineTaggingFeatures(const TargetRegion& reg
         _tmp_records, _tmp_genotypes, is_haploid, _global_ctx.vcf_normal_index.value(), out_records);
 
     // reset temp storage of variant records and features
-    _tmp_vids = {};
-    _tmp_records = {};
-    _tmp_genotypes = {};
-    _tmp_alt_wildcard_records = {};
+    ResetTmpStorage();
   }
   prev_pos = pos;
 }
@@ -304,7 +316,7 @@ void FilterRegionClass::UpdateWorkerCtx(std::unique_ptr<WorkerContext>& worker_c
 }
 
 void FilterRegionClass::FilterTumorNormalRegion(const xoos::svc::TargetRegion& region,
-                                                xoos::svc::FlowContext& flow_ctx) {
+                                                xoos::svc::RegionResult& result) {
   // This function is designed to filter a given region of a GATK Mutect2 output VCF in a paired somatic tumor normal
   // analysis. It is designed to use a single thread and be run in parallel for multiple regions simultaneously as part
   // of a region based end to end filtering workflow. If there are variants that need to be filtered in the specified
@@ -319,7 +331,7 @@ void FilterRegionClass::FilterTumorNormalRegion(const xoos::svc::TargetRegion& r
 
   const auto& somatic_calculator = _worker_ctx->calculators.front();
 
-  auto& out_records = flow_ctx.out_records;
+  auto& out_records = result.out_records;
   vec<io::VcfRecordPtr> fail_records;
 
   const auto& hdr = _global_ctx.hdr;
@@ -358,14 +370,13 @@ void FilterRegionClass::FilterTumorNormalRegion(const xoos::svc::TargetRegion& r
       const DepthTuple& normalize_target = normalize_targets.GetValue(region.chrom);
 
       // Filter Somatic for region
-      // TODO: Filter per sample
       tumor_normal_processing.ProcessRecord(
-          record_copy, out_records, somatic_calculator, normalize_target, header_info);
+          record_copy, out_records, somatic_calculator, normalize_target, header_info, result.shap_value_rows);
     }
   }
 }
 
-void FilterRegionClass::FilterTumorOnlyTeRegion(const TargetRegion& region, FlowContext& flow_ctx) {
+void FilterRegionClass::FilterTumorOnlyTeRegion(const TargetRegion& region, RegionResult& result) {
   // This function is intended to be used within a single thread (e.g. one TaskFlow task), but multiple regions can be
   // processed in parallel in the tumor-only te workflow.
   // For the specified target region, BAM and VCF features are computed, then variants are filtered by
@@ -377,15 +388,15 @@ void FilterRegionClass::FilterTumorOnlyTeRegion(const TargetRegion& region, Flow
 
   const auto& somatic_calculator = _worker_ctx->calculators.front();
 
-  auto& out_records = flow_ctx.out_records;
+  auto& out_records = result.out_records;
 
   const auto& scoring_cols = _global_ctx.model_config.scoring_cols;
   const auto& bed_regions = _global_ctx.bed_regions;
   const auto& interest_regions = _global_ctx.interest_regions;
   const auto& normalize_targets = _global_ctx.normalize_targets;
   const bool make_forcecalls = _global_ctx.force_calls.has_value();
-  const auto& block_list = _global_ctx.block_list.value_or(StrUnorderedSet{});
-  const auto& hotspots = _global_ctx.hotspots.value_or(StrUnorderedSet{});
+  const auto block_list = _global_ctx.block_list.value_or(StrUnorderedSet{});
+  const auto hotspots = _global_ctx.hotspots.value_or(StrUnorderedSet{});
 
   if (!reader.SetRegion(region.chrom, region.start, region.end)) {
     return;
@@ -441,8 +452,8 @@ void FilterRegionClass::FilterTumorOnlyTeRegion(const TargetRegion& region, Flow
     auto key = GetVariantCorrelationKey(chrom, pos, ref_trimmed, alt_trimmed);
     auto key_unpadded = GetVariantCorrelationKey(chrom, pos, ref_trimmed, alt_trimmed, false);
     const VariantId vid(chrom, pos, ref_trimmed, alt_trimmed);
-    auto variant_feature =
-        tumor_only_te_processing.ScoreVariant(vid, normalize_targets, scoring_cols, somatic_calculator);
+    const auto variant_feature = tumor_only_te_processing.ScoreVariant(
+        vid, normalize_targets, scoring_cols, somatic_calculator, result.shap_value_rows);
 
     if (make_forcecalls) {
       tumor_only_te_processing.CreateNewForceRecordsForInbetweenPositions(pos, chrom, out_records);
@@ -459,7 +470,7 @@ void FilterRegionClass::FilterTumorOnlyTeRegion(const TargetRegion& region, Flow
   }
 }
 
-void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowContext& flow_ctx) {
+void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, RegionResult& result) {
   // This function is intended to be used within a single thread (e.g. one TaskFlow task), but multiple regions can be
   // processed in parallel in the germline filtering workflow.
   // For the specified target region, BAM and VCF features are computed, then variants are filtered by
@@ -468,7 +479,7 @@ void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowCon
   // Load values for worker and global contexts
   auto& reader = _worker_ctx->filter_variants_reader;
 
-  auto& out_records = flow_ctx.out_records;
+  auto& out_records = result.out_records;
 
   const auto& bed_regions = _global_ctx.bed_regions;
   const auto& interest_regions = _global_ctx.interest_regions;
@@ -479,10 +490,7 @@ void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowCon
   }
 
   // Flush the temporary storage of variant records and features from any prior region
-  _tmp_vids = {};
-  _tmp_records = {};
-  _tmp_genotypes = {};
-  _tmp_alt_wildcard_records = {};
+  ResetTmpStorage();
 
   // Compute BAM and VCF Features here
   auto [vcf_features, bam_features] =
@@ -490,7 +498,6 @@ void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowCon
 
   std::optional<u64> prev_pos = std::nullopt;
   std::optional<u64> prev_pass_ref_max_pos = std::nullopt;  // max position of previous variant's ref allele
-  // @TODO: initialize this variable using the last variant from the previous region
 
   const DepthTuple& normalize_target = normalize_targets.GetValue(region.chrom);
   while (const auto& record = reader.GetNextRegionRecord(BCF_UN_ALL)) {
@@ -507,8 +514,8 @@ void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowCon
       continue;
     }
     // First reconcile and output the records for any upstream positions, then process the current record.
-    ReconcileGermlineFeatures(region, pos, prev_pos, prev_pass_ref_max_pos, out_records);
-    FilterGermlineRecord(record, vcf_features, bam_features, normalize_target, out_records);
+    ReconcileGermlineFeatures(region, static_cast<u64>(pos), prev_pos, prev_pass_ref_max_pos, result.out_records);
+    FilterGermlineRecord(record, vcf_features, bam_features, normalize_target, result);
   }
   if (!_tmp_records.empty() && prev_pos.has_value()) {
     // process variants at the very last position in the target region
@@ -526,11 +533,11 @@ void FilterRegionClass::FilterGermlineRegion(const TargetRegion& region, FlowCon
   }
 }
 
-void FilterRegionClass::FilterGermlineTaggingRegion(const TargetRegion& region, FlowContext& flow_ctx) {
+void FilterRegionClass::FilterGermlineTaggingRegion(const TargetRegion& region, RegionResult& result) {
   // Load values for worker and global contexts
   auto& reader = _worker_ctx->filter_variants_reader;
 
-  auto& out_records = flow_ctx.out_records;
+  auto& out_records = result.out_records;
 
   const auto& bed_regions = _global_ctx.bed_regions;
   const auto& interest_regions = _global_ctx.interest_regions;
@@ -541,10 +548,7 @@ void FilterRegionClass::FilterGermlineTaggingRegion(const TargetRegion& region, 
   }
 
   // Flush the temporary storage of variant records and features from any prior region
-  _tmp_vids = {};
-  _tmp_records = {};
-  _tmp_genotypes = {};
-  _tmp_alt_wildcard_records = {};
+  ResetTmpStorage();
 
   // Compute BAM and VCF Features here
   auto [vcf_features, bam_features] =
@@ -576,7 +580,7 @@ void FilterRegionClass::FilterGermlineTaggingRegion(const TargetRegion& region, 
       out_records.emplace_back(record_copy);
     } else {
       // PASS filter not found; this is a candidate for germline tagging
-      FilterGermlineTaggingRecord(record, vcf_features, bam_features, normalize_target);
+      FilterGermlineTaggingRecord(record, vcf_features, bam_features, normalize_target, result.shap_value_rows);
     }
   }
   if (!_tmp_records.empty() && prev_pos.has_value()) {

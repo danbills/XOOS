@@ -76,3 +76,18 @@ target_link_xoos_libraries(vcf_to_bed
         util
         io
 )
+
+add_default_executable(generate_pon
+        generate-pon.cpp
+)
+target_link_libraries(generate_pon
+        PRIVATE
+        svc_core
+)
+target_link_xoos_libraries(generate_pon
+        PRIVATE
+        cli
+        log
+        util
+        io
+)

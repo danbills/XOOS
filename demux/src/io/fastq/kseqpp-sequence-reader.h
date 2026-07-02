@@ -16,7 +16,7 @@ namespace xoos::demux {
 namespace fs = std::filesystem;
 
 /**
-* KZ2024 In the original implementation, KSeqppSequenceReader was a simple wrapper around klibpp::SeqStreamIn. However,
+* In the original implementation, KSeqppSequenceReader was a simple wrapper around klibpp::SeqStreamIn. However,
 * in that approach there is considerable overhead in the allocation of strings to hold the various pieces of
 * information; I therefore will convert the demux code to a new class that holds data in preallocated memory buffers
 * of fixed size. So fill those buffers in an efficient way, I had to add an alternate path in kseq++; I accomplished
@@ -119,7 +119,7 @@ class KStreamToMemory : public klibpp::KStream<TFile, TFunc, klibpp::mode::In_> 
       *dret = this->buf[i];
     }
 
-    // KZ024 - this test is computationally very expensive and does not seem to be necessary for Roche input files.
+    // This test is computationally very expensive and does not seem to be necessary for Roche input files.
     return true;
   }
 
@@ -191,6 +191,9 @@ class KStreamToMemory : public klibpp::KStream<TFile, TFunc, klibpp::mode::In_> 
     if (this->err()) {
       this->is_tqs = true;
       throw error::Error("Error reading sequence qualities ({})", _efunc(this->f));
+    }
+    if (this->eof() && length == rec.SeqLen()) {
+      throw error::Error("FASTQ file does not end with a newline ({})", _filename);
     }
     this->is_ready = false;               // we have not come to the next header line
     if (rec.SeqLen() != rec.QualLen()) {  // error: qual string is of a different length

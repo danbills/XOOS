@@ -15,12 +15,11 @@
 #include <kseq++/seqio.hpp>
 #include <taskflow/algorithm/transform.hpp>
 
+#include "adapter-design/adapter-design-constants.h"
 #include "adapter-design/generate-edited-sequence.h"
 #include "utility/string-util.h"
 
 namespace vfs = xoos::vfs;
-
-using VfsPtr = vfs::VirtualFilesystemPtr;
 
 using fs::path;
 using std::tuple;
@@ -41,10 +40,7 @@ SeqMatcherPtr AdapterDesignBundle::GetMatcher3p(const BarcodeType& type) const {
   return FindMatcher(adapter_3p, "3'", type);
 }
 
-/// Four possible values of a DNA nucleotide for generating edited sequences
-const std::string kDnaNucleotideAlphabet = "ACTG";
-
-/// A KSeqpp type to read from the virtual filesystem
+/// @brief A KSeqpp type to read from the virtual filesystem
 using KStreamInVfs = klibpp::KStreamIn<vfs::VirtualFileHandlePtr, decltype(&vfs::Read)>;
 
 /**
@@ -198,7 +194,7 @@ AdapterDesignBundle LoadAdapterDesignBundle(const VfsPtr& vfs, const AdapterDesi
     adapter_3p.emplace_back(item.type, matcher);
   }
 
-  return {adapter_5p, adapter_3p};
+  return {adapter_5p, adapter_3p, design};
 }
 
 SeqMatcherPtr FindMatcher(const vec<tuple<BarcodeType, SeqMatcherPtr>>& matchers, const std::string& name,
@@ -295,6 +291,31 @@ BarcodePool Transform(LutTransform transform, const BarcodePool& barcodes) {
   return barcodes;
 }
 
+namespace {
+/**
+ * @brief Validate that a DNA sequence contains only uppercase bases (A, C, G, T).
+ *
+ * @param seq         The sequence to validate.
+ * @param field_name  Name of the field or source, used in the error message on failure.
+ * @throws error::Error if any character in @p seq is not in kDnaAlphabet.
+ */
+void ValidateDnaSequence(const std::string_view seq, const std::string_view field_name) {
+  for (auto c : seq) {
+    if (!sequence::IsACGT(c)) {
+      throw error::Error("LUT {} contains invalid character '{}', expected only [{}]", field_name, c,
+                         sequence::kDnaAlphabet);
+    }
+  }
+}
+
+/// Build a single-entry BarcodePool from an inline sequence string.
+/// Validates that the sequence contains only uppercase DNA bases.
+BarcodePool InlineSequenceToPool(const std::string& seq) {
+  ValidateDnaSequence(seq, kSequenceKey);
+  return {{0, seq, seq}};
+}
+}  // namespace
+
 vec<tuple<BarcodePoolSource, vec<BarcodeDefinition>>> GroupBarcodeDefinitionsBySource(
     const AdapterDesign& blueprint, const std::optional<BarcodePool>& sid_pool) {
   std::map<BarcodePoolSource, vec<BarcodeDefinition>> barcode_definitions;
@@ -302,6 +323,8 @@ vec<tuple<BarcodePoolSource, vec<BarcodeDefinition>>> GroupBarcodeDefinitionsByS
     for (const auto& barcode : barcodes) {
       if (sid_pool && barcode.type == BarcodeType::kSid) {
         barcode_definitions[*sid_pool].emplace_back(barcode);
+      } else if (barcode.lut.HasInlineSequence()) {
+        barcode_definitions[InlineSequenceToPool(barcode.lut.sequence)].emplace_back(barcode);
       } else {
         barcode_definitions[barcode.lut.sequences].emplace_back(barcode);
       }
@@ -321,7 +344,7 @@ AdapterDesignBundle LoadAdapterDesignBundle(const fs::path& bundle, const Adapte
 
 SeqMatcherPtr AggregateLut(const BarcodePool& barcodes, u32 barcode_len, const vec<vec<EditedBarcode>>& edited_barcodes,
                            const LutDefinition& lut_definition, const SearchDefinition& search_definition) {
-  // KZ2023 switched to LUT indexed by 64-bit integer with only one barcode. For every
+  // switched to LUT indexed by 64-bit integer with only one barcode. For every
   // sequence length, we need a separate hash table. Support sequence lengths up to
   // 32. As input argument, we need the maximum length of the sequence.
   // We will now convert the "legacy" entries into an int64-based LUT.
@@ -340,10 +363,8 @@ SeqMatcherPtr AggregateLut(const BarcodePool& barcodes, u32 barcode_len, const v
       // calculate hash value and insert one barcode into output lut
       const auto hash_val{
           SeqLut::HashValue(edited_barcode.sequence, 0, static_cast<u32>(edited_barcode.sequence.length()))};
-      // Note: barcode type is currently not used, so we can use the same barcode type for all barcodes
-
       int_lut.Add(static_cast<u32>(edited_barcode.sequence.length()), hash_val,
-                  {edited_barcode.barcode_id, edited_barcode.edit_distance, BarcodeMatch::kUMI5p});
+                  {static_cast<u16>(edited_barcode.barcode_id), static_cast<u16>(edited_barcode.edit_distance)});
     }
   }
 
@@ -365,7 +386,7 @@ void BuildLoadBarcodePoolGraph(tf::Taskflow& tf, const VfsPtr& vfs, const Barcod
     const auto& barcode_pool = std::get<BarcodePool>(source);
     auto length = BarcodePoolLength(barcode_pool);
     if (!length) {
-      throw error::Error("Inconsistent sequence lengths in the sample sheet, all sequences must be the same length");
+      throw error::Error("Inconsistent sequence lengths in barcode pool, all sequences must be the same length");
     }
     load_barcode_pool_result.barcode_len = length.value();
     load_barcode_pool_result.barcodes = barcode_pool;
@@ -381,13 +402,44 @@ void BuildLoadBarcodePoolGraph(tf::Taskflow& tf, const VfsPtr& vfs, const Barcod
   }
 }
 
+/**
+ * @brief Prepend a prefix and/or append a suffix to each barcode in the pool.
+ *
+ * Both are applied before any transform (e.g. reverse_complement) so that the transform covers
+ * the full sequence.
+ *
+ * @param pool   Barcode pool whose entries will be copied with affixes applied.
+ * @param prefix DNA sequence to prepend to each barcode.
+ * @param suffix DNA sequence to append to each barcode.
+ * @return New BarcodePool with the affixed sequences.
+ */
+static BarcodePool ApplyAffixes(const BarcodePool& pool, const std::string_view prefix, const std::string_view suffix) {
+  ValidateDnaSequence(prefix, kPrefixKey);
+  ValidateDnaSequence(suffix, kSuffixKey);
+
+  BarcodePool result;
+  result.reserve(pool.size());
+  for (const auto& barcode : pool) {
+    std::string affixed_seq;
+    affixed_seq.reserve(prefix.size() + barcode.sequence.size() + suffix.size());
+    affixed_seq += prefix;
+    affixed_seq += barcode.sequence;
+    affixed_seq += suffix;
+    result.emplace_back(barcode.id, std::move(affixed_seq), barcode.name);
+  }
+  return result;
+}
+
 void BuildGenerateLutGraph(tf::Taskflow& tf, std::optional<tf::Task>& load_barcodes_task,
                            const LoadBarcodePoolResult& load_barcode_pool_result,
                            GenerateLutResult& generate_lut_result) {
-  // Transform the barcode pool as defined in the LUT definition
+  // Apply prefix/suffix (if any) then transform the barcode pool as defined in the LUT definition
   auto transform_barcodes = [&generate_lut_result, &load_barcode_pool_result]() {
-    generate_lut_result.barcodes =
-        Transform(generate_lut_result.definition.lut.transform, load_barcode_pool_result.barcodes);
+    const auto& prefix = generate_lut_result.definition.lut.prefix;
+    const auto& suffix = generate_lut_result.definition.lut.suffix;
+    const auto& pool = load_barcode_pool_result.barcodes;
+    const auto affixed = (prefix.empty() && suffix.empty()) ? pool : ApplyAffixes(pool, prefix, suffix);
+    generate_lut_result.barcodes = Transform(generate_lut_result.definition.lut.transform, affixed);
 
     generate_lut_result.barcodes_begin = std::cbegin(generate_lut_result.barcodes);
     generate_lut_result.barcodes_end = std::cend(generate_lut_result.barcodes);
@@ -406,7 +458,7 @@ void BuildGenerateLutGraph(tf::Taskflow& tf, std::optional<tf::Task>& load_barco
     auto emplace_edited_barcode = [&result, barcode_id = barcode.id](u32 edit_distance, const std::string& seq) {
       result.emplace_back(barcode_id, edit_distance, seq);
     };
-    GenerateEditedSequence(kDnaNucleotideAlphabet, barcode.sequence, ed, emplace_edited_barcode);
+    GenerateEditedSequence(sequence::kDnaAlphabet, barcode.sequence, ed, emplace_edited_barcode);
     return result;
   };
   auto generate_edited_sequences_task =
@@ -414,11 +466,26 @@ void BuildGenerateLutGraph(tf::Taskflow& tf, std::optional<tf::Task>& load_barco
                    std::ref(generate_lut_result.edited_barcodes_begin), generated_edited_sequence);
   generate_edited_sequences_task.succeed(transform_barcodes_task);
 
-  // Aggregate the barcodes together into a LUT
+  // Aggregate the barcodes together into a LUT. Use the effective barcode length
+  // which includes any prefix and suffix appended above.
   auto aggregate_lut = [&load_barcode_pool_result, &generate_lut_result]() {
-    generate_lut_result.matcher = AggregateLut(generate_lut_result.barcodes, load_barcode_pool_result.barcode_len,
-                                               generate_lut_result.edited_barcodes, generate_lut_result.definition.lut,
-                                               generate_lut_result.definition.search);
+    const auto affix_len = static_cast<u32>(generate_lut_result.definition.lut.prefix.size() +
+                                            generate_lut_result.definition.lut.suffix.size());
+    const auto effective_barcode_len = load_barcode_pool_result.barcode_len + affix_len;
+
+    // IntLut indexes _hash_tables by length, which has kHashTableSlotsByLength (32) slots.
+    // With max_edit_distance, the IntLut constructor receives effective_barcode_len + max_edit_distance,
+    // so the effective barcode length alone must be strictly less than 32 to leave room for edits.
+    // SeqLut::HashValue also limits to 32 bases (fits in a uint64_t).
+    constexpr u32 kMaxLutSequenceLength = 32;
+    if (effective_barcode_len >= kMaxLutSequenceLength) {
+      throw error::Error("LUT effective barcode length {} (core {} + affixes {}) exceeds maximum of {} for '{}'",
+                         effective_barcode_len, load_barcode_pool_result.barcode_len, affix_len,
+                         kMaxLutSequenceLength - 1, generate_lut_result.definition.lut.sequences.string());
+    }
+    generate_lut_result.matcher =
+        AggregateLut(generate_lut_result.barcodes, effective_barcode_len, generate_lut_result.edited_barcodes,
+                     generate_lut_result.definition.lut, generate_lut_result.definition.search);
   };
   auto aggregate_lut_task = tf.emplace(aggregate_lut);
   aggregate_lut_task.succeed(generate_edited_sequences_task);

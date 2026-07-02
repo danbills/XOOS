@@ -13,13 +13,16 @@
 
 namespace xoos::demux {
 // TODO: rewrite to use a struct
-LutBundleDuplex::LutBundleDuplex(SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p,
+LutBundleDuplex::LutBundleDuplex(SeqMatcher runway_5p, SeqMatcher sid_5p, SeqMatcher start_sequence, SeqMatcher sid_3p,
                                  SeqMatcher stop_sequence, SeqMatcher loop_sequence)
-    : _sid_5p_matcher{std::move(sid_5p)},
+    : _runway_5p_matcher{std::move(runway_5p)},
+      _sid_5p_matcher{std::move(sid_5p)},
       _start_sequence_matcher{std::move(start_sequence)},
       _sid_3p_matcher{std::move(sid_3p)},
       _stop_sequence_matcher{std::move(stop_sequence)},
       _loop_sequence_matcher{std::move(loop_sequence)} {}
+
+const SeqMatcher& LutBundleDuplex::Runway5pMatcher() const { return _runway_5p_matcher; }
 
 const SeqMatcher& LutBundleDuplex::Sid5pMatcher() const { return _sid_5p_matcher; }
 
@@ -47,9 +50,9 @@ std::string_view LutBundleDuplex::LoopSequence() const {
 
 template <>
 LutBundleDuplex CreateLutBundle<LutBundleDuplex>(const AdapterDesignBundle& designs) {
-  return LutBundleDuplex{*designs.GetMatcher5p(BarcodeType::kSid), *designs.GetMatcher5p(BarcodeType::kAnchor),
-                         *designs.GetMatcher3p(BarcodeType::kSid), *designs.GetMatcher3p(BarcodeType::kAnchor),
-                         *designs.GetMatcher5p(BarcodeType::kLoop)};
+  return LutBundleDuplex{*designs.GetMatcher5p(BarcodeType::kRunway), *designs.GetMatcher5p(BarcodeType::kSid),
+                         *designs.GetMatcher5p(BarcodeType::kAnchor), *designs.GetMatcher3p(BarcodeType::kSid),
+                         *designs.GetMatcher3p(BarcodeType::kAnchor), *designs.GetMatcher5p(BarcodeType::kLoop)};
 }
 
 }  // namespace xoos::demux

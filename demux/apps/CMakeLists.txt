@@ -18,7 +18,7 @@ target_link_xoos_libraries(demux
 )
 
 
-add_executable(demux_strand_index
+add_default_executable(demux_strand_index
         demux-strand-index.cpp
 )
 

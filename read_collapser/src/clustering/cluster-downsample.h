@@ -7,6 +7,8 @@
 
 namespace xoos::read_collapser {
 
-void DownsampleReadsInCluster(vec<AlignmentPtr>& reads, u32 max_reads);
+struct ClusterId;
+
+void DownsampleReadsInCluster(vec<AlignmentPtr>& reads, u32 max_reads, const ClusterId& cluster_id);
 
 }  // namespace xoos::read_collapser

@@ -104,12 +104,27 @@ vec<AlignmentPtr> DeconvolveDuplexReads(const vec<AlignmentPtr>& original_alignm
         // Set R2 to the reverse strand for parent-parent workflow
         alignment_r2->record->core.flag |= BAM_FREVERSE;
       }
+      // Update adapter information for R1 and R2 based on the original alignment
+      alignment_r1->umi3p = original_alignment->umi3p;
+      alignment_r1->umi5p = original_alignment->umi5p;
+      alignment_r1->is_3p_complete = original_alignment->is_3p_complete;
+      alignment_r1->is_5p_complete = original_alignment->is_5p_complete;
+      alignment_r2->umi3p = original_alignment->umi3p;
+      alignment_r2->umi5p = original_alignment->umi5p;
+      alignment_r2->is_3p_complete = original_alignment->is_3p_complete;
+      alignment_r2->is_5p_complete = original_alignment->is_5p_complete;
+
       deconvolved_alignments.emplace_back(std::move(alignment_r1));
       deconvolved_alignments.emplace_back(std::move(alignment_r2));
     } else if (std::holds_alternative<io::Bam1Ptr>(deconvolved_bam_records)) {
       // One record deconvolved, use it as is
       auto alignment_r1 = std::make_shared<Alignment>(std::move(std::get<io::Bam1Ptr>(deconvolved_bam_records)));
       alignment_r1->cluster = original_alignment->cluster;
+      // Update adapter information for the deconvolved read based on the original alignment
+      alignment_r1->umi3p = original_alignment->umi3p;
+      alignment_r1->umi5p = original_alignment->umi5p;
+      alignment_r1->is_3p_complete = original_alignment->is_3p_complete;
+      alignment_r1->is_5p_complete = original_alignment->is_5p_complete;
       deconvolved_alignments.emplace_back(std::move(alignment_r1));
     } else {
       // Simplex read, no deconvolution needed

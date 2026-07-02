@@ -1,0 +1,31 @@
+flowchart TD
+    %% Node Styling
+    classDef input fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef process fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef output fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+
+    %% Input Nodes
+    subgraph Input [Input Files]
+        B[BAM File]:::input
+        R[Resources]:::input
+    end
+
+    %% Processing Nodes
+    subgraph Processing [Processing Pipeline]
+        direction TB
+        COV[Calculate Coverage]:::process
+        NORM[Correct & Normalize Coverage]:::process
+        SEG[Segment Genome]:::process
+        CALL[Call Copy Number]:::process
+    end
+
+    %% Output Nodes
+    subgraph Output [Output Files]
+        CNV[Copy Number Variants]:::output
+        MET[Metrics]:::output
+        VIS[Visualization Files]:::output
+    end
+
+    %% Connections
+    Input --> Processing
+    Processing --> Output

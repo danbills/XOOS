@@ -1,5 +1,4 @@
-add_library(xoos_types
-        STATIC
+add_default_library(xoos_types
         xoos/types/float.cpp
         xoos/types/fs.cpp
         xoos/types/optional.cpp

@@ -5,6 +5,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <vector>
 
 namespace xoos::util::container {
 
@@ -20,6 +21,43 @@ std::optional<V> Find(const C& elements, const K& k) {
 template <typename C, typename T>
 bool Contains(const C& elements, const T& value) {
   return std::find(std::cbegin(elements), std::cend(elements), value) != std::cend(elements);
+}
+
+template <typename T>
+void VectorErase(std::vector<T>& vec, std::vector<size_t> indices) {
+  if (indices.empty() || vec.empty()) {
+    return;
+  }
+
+  std::ranges::sort(indices);
+  auto [removed_begin, removed_end] = std::ranges::unique(indices);
+  indices.erase(removed_begin, removed_end);
+
+  if (indices.front() >= vec.size()) {
+    return;
+  }
+
+  auto write_it = vec.begin() + indices[0];
+  const size_t n_indices = indices.size();
+
+  for (size_t i = 0; i < n_indices; ++i) {
+    // stop processing if remaining indices are beyond the vector's memory
+    if (indices[i] >= vec.size()) {
+      break;
+    }
+
+    // calculate the boundaries of the valid data block to preserve
+    auto read_start = vec.begin() + indices[i] + 1;
+    auto read_end = (i + 1 < n_indices && indices[i + 1] < vec.size()) ? vec.begin() + indices[i + 1] : vec.end();
+
+    // shift the block leftward into its final memory layout
+    if (read_start < read_end) {
+      write_it = std::move(read_start, read_end, write_it);
+    }
+  }
+
+  // truncate the lingering garbage at the tail
+  vec.erase(write_it, vec.end());
 }
 
 /**

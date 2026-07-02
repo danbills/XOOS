@@ -29,10 +29,10 @@
 namespace xoos::alignment_metrics {
 
 BamItrAlignmentProvider::BamItrAlignmentProvider(const SuperRegion& super_region,
-                                                 const AlignmentReader& alignment_reader)
+                                                 const io::AlignmentReader& alignment_reader)
     : _alignment_reader(alignment_reader),
       _itr(io::SamItrRegion(
-          alignment_reader.idx.get(), alignment_reader.header.get(), CreateHtsRegList(super_region).release(), 1)) {
+          alignment_reader.idx.get(), alignment_reader.hdr.get(), CreateHtsRegList(super_region).release(), 1)) {
 }
 
 s32 BamItrAlignmentProvider::operator()(bam1_t* const bam1_ptr) const {
@@ -46,7 +46,7 @@ MetricsWorker::MetricsWorker(const AlignmentMetricsOptions& options,
       _dataset_metadata(dataset_metadata),
       _region_lookup_table(region_lookup_table),
       _alignment_reader(!_options.bam_input.empty()
-                            ? std::make_shared<AlignmentReader>(OpenAlignmentFile(_options.bam_input))
+                            ? std::make_shared<io::AlignmentReader>(io::OpenAlignmentReader(_options.bam_input))
                             : nullptr),
       _metrics(std::make_shared<Metrics>(_options, _dataset_metadata)) {
 }

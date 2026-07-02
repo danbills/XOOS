@@ -1,5 +1,4 @@
-add_library(xoos_vfs
-        STATIC
+add_default_library(xoos_vfs
         xoos/vfs/archive.cpp
         xoos/vfs/mem.cpp
         xoos/vfs/std.cpp
@@ -16,9 +15,9 @@ target_include_directories(xoos_vfs
         .
 )
 
-find_package(xoos-libarchive REQUIRED)
+find_package(LibArchive REQUIRED)
 
 target_link_libraries(xoos_vfs
         PRIVATE
-        xoos-libarchive::xoos-libarchive
+        LibArchive::LibArchive
 )

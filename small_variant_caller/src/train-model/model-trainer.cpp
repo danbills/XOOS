@@ -107,7 +107,8 @@ void ModelTrainer::Train(const fs::path& output_file,
                          const size_t num_threads,
                          const u32 num_rounds,
                          const VariantGroup var_group,
-                         const std::optional<fs::path>& output_training_data) {
+                         const std::optional<fs::path>& output_training_data,
+                         const io::CommandLineInfo& command_line) {
   // 1. Set up LightGBM scoring column names and categorical names based on the variant type.
   // 2. Write training data to a TSV file if the output_training_data path is provided in the parameters.
   // 3. Print the label distribution of the training data for debugging and verification purposes.
@@ -129,7 +130,7 @@ void ModelTrainer::Train(const fs::path& output_file,
   if (output_training_data.has_value()) {
     auto writer = LockedTsvWriter(output_training_data.value());
     Logging::Info("Writing training data to {}", output_training_data.value());
-    _dataset.WriteData(writer, _scoring_names, _is_germline);
+    _dataset.WriteData(writer, _scoring_names, _is_germline, command_line);
   }
 
   {

@@ -43,7 +43,7 @@ class LightGBMConan(ConanFile):
         self.requires(
             "fast_double_parser/0.8.0", transitive_headers=True, transitive_libs=True
         )
-        self.requires("fmt/11.0.2", transitive_headers=True, transitive_libs=True)
+        self.requires("fmt/12.1.0", transitive_headers=True, transitive_libs=True)
         self.requires(
             "llvm-openmp/18.1.8", transitive_headers=True, transitive_libs=True
         )

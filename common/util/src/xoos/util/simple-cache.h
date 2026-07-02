@@ -59,13 +59,15 @@ class SimpleCache {
     // Check if value exists in cache and is still valid
     if (auto it = _cache.find(k); it != _cache.end()) {
       if (auto ptr = it->second.lock()) {
-        return ptr;  // Cache hit - return existing value
+        // Cache hit - return existing value
+        return ptr;
       }
     }
 
     // Cache miss or expired weak_ptr - load new value
     auto value = _loader(key);
-    _cache[k] = value;  // Store as weak_ptr
+    // Store as weak_ptr
+    _cache[k] = value;
     return value;
   }
 

@@ -13,6 +13,7 @@
 #include "utility/alignment-util.h"
 #include "utility/math-util.h"
 #include "utility/stop-watch.h"
+#include "xoos/util/sequence-functions.h"
 
 /*
  * For alignment, we are using a heavily modified version of Martin Sosic's Edlib library
@@ -943,15 +944,19 @@ void Alignment::UpdateMetrics(FixedReadRecord& read, DuplexMetrics& metrics) con
       break;
     case kDuplexEditDistanceFail:
       ++metrics.failed_assigned_counts.too_many_errors[sid];
+      metrics.failed_assigned_counts.raw_bases[sid] += read.SeqLen();
       return;
     case kDuplexTooLongFail:
       ++metrics.failed_assigned_counts.consensus_too_long[sid];
+      metrics.failed_assigned_counts.raw_bases[sid] += read.SeqLen();
       return;
     case kTrimmedTooShortFail:
       ++metrics.failed_assigned_counts.trimmed_read_too_short[sid];
+      metrics.failed_assigned_counts.raw_bases[sid] += read.SeqLen();
       return;
     case kFailedMidadapterTrimFail:
       ++metrics.failed_assigned_counts.failed_hairpin_stem_trim_reads[sid];
+      metrics.failed_assigned_counts.raw_bases[sid] += read.SeqLen();
       return;
     default:
       // This should never happen so log an error
@@ -970,9 +975,10 @@ void Alignment::UpdateMetrics(FixedReadRecord& read, DuplexMetrics& metrics) con
   metrics.endadapter_position_distr[sid].AddCountToHistogram(trim_size, 1);
 
   // update base count metrics
-  metrics.base_counts.concordant[sid] += _concordant_duplex_bases_total;
-  metrics.base_counts.discordant[sid] += static_cast<u64>(_discordant_bases_total);
-  metrics.base_counts.simplex[sid] += simplex_length;
+  metrics.passing_counts.concordant_bases[sid] += _concordant_duplex_bases_total;
+  metrics.passing_counts.discordant_bases[sid] += static_cast<u64>(_discordant_bases_total);
+  metrics.passing_counts.simplex_bases[sid] += static_cast<u64>(simplex_length);
+  metrics.passing_counts.raw_bases[sid] += static_cast<u64>(read.SeqLen());
 
   const auto report_length = static_cast<u32>(read.consensus_seq_len);
 
@@ -1055,8 +1061,10 @@ bool Alignment::ProcessExtraTrim(FixedReadRecord& read) {
     }
     // trim off the 5' side
     if (trim_start != -1) {
+      // upstream should handle returning valid trim positions
       _endadapter_trim_pos = trim_start;
     } else if (read.consensus_seq_len == 0) {
+      // The trim was possible but we shouldn't proceed with partial trimming as
       // we can't trim something that doesn't have any bases
       read.SetStatus(FixedReadRecord::Status::kTrimmedTooShortFail);
       return false;
@@ -1104,7 +1112,7 @@ bool Alignment::GenerateConsensusSeq(FixedReadRecord& read) {
   if (is_swapped) {  // The S2 is longer than S1, should only occur with full reads
     for (s32 i = 0; i < simplex_length; ++i) {
       // copy via alphabet representation
-      consensus_seq[i] = kAlphabet[p_reference[i]];
+      consensus_seq[i] = sequence::kDnaAlphabet[p_reference[i]];
     }
   } else {  // fast path as we can directly copy from the reference (reference) sequence
     std::copy_n(reference_in, simplex_length, consensus_seq);
@@ -1122,7 +1130,7 @@ bool Alignment::GenerateConsensusSeq(FixedReadRecord& read) {
       // Copy out the perfectly aligned data.
       if (is_swapped) {  // slow path as we need to go via the alphabet
         for (s32 i = 0; i < stretch_length; ++i) {
-          consensus_seq[output_size + i] = kAlphabet[p_query[query_pos + i]];
+          consensus_seq[output_size + i] = sequence::kDnaAlphabet[p_query[query_pos + i]];
         }
       }
       query_pos += stretch_length;
@@ -1136,18 +1144,18 @@ bool Alignment::GenerateConsensusSeq(FixedReadRecord& read) {
       switch (alignment[consensus_pos]) {
         case kEdopInsert:
           // Insertion into reference = deletion from query.
-          consensus_seq[output_size] = mask_discordant_bases ? 'N' : kAlphabet[p_query[query_pos]];
+          consensus_seq[output_size] = mask_discordant_bases ? 'N' : sequence::kDnaAlphabet[p_query[query_pos]];
           ++query_pos;
           break;
         case kEdopDelete:
           // Deletion from reference = insertion to query.
-          consensus_seq[output_size] = mask_discordant_bases ? 'N' : kAlphabet[p_reference[reference_pos]];
+          consensus_seq[output_size] = mask_discordant_bases ? 'N' : sequence::kDnaAlphabet[p_reference[reference_pos]];
           ++reference_pos;
           break;
         case kEdopMismatch: {
           // Mismatch = substitution. Note that we might have to swap the query and reference bases.
-          const s32 true_ref_base = is_swapped ? p_query[query_pos] : p_reference[reference_pos];
-          consensus_seq[output_size] = mask_discordant_bases ? 'N' : kAlphabet[true_ref_base];
+          const auto true_ref_base = is_swapped ? p_query[query_pos] : p_reference[reference_pos];
+          consensus_seq[output_size] = mask_discordant_bases ? 'N' : sequence::kDnaAlphabet[true_ref_base];
           ++query_pos;
           ++reference_pos;
           break;
@@ -1166,7 +1174,7 @@ bool Alignment::GenerateConsensusSeq(FixedReadRecord& read) {
     if (is_swapped) {
       // copy via alphabet representation
       for (; reference_pos < reference_length; ++reference_pos) {
-        consensus_seq[output_size++] = kAlphabet[p_reference[reference_pos]];
+        consensus_seq[output_size++] = sequence::kDnaAlphabet[p_reference[reference_pos]];
       }
     } else {
       // fast path as we can directly copy from the reference sequence

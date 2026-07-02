@@ -4,10 +4,11 @@
 #include <memory>
 
 #include <xoos/io/bed-region.h>
+#include <xoos/io/metadata-util.h>
 
 #include "compute-bam-region-features.h"
-#include "core/command-line-info.h"
 #include "core/config.h"
+#include "core/duplex-lowbq-mode.h"
 #include "core/homopolymer-filter.h"
 #include "core/sequencing-protocol.h"
 #include "core/yc-decode-method.h"
@@ -41,7 +42,8 @@ struct ComputeBamFeaturesCliParams {
   std::optional<fs::path> skip_variants_vcf{};
   YcDecodeMethod decode_yc{YcDecodeMethod::kNone};
   yc_decode::BaseType min_base_type{};
-  std::optional<CommandLineInfo> command_line;
+  std::optional<io::CommandLineInfo> command_line;
+  DuplexLowbqMode duplex_lowbq{DuplexLowbqMode::kInclude};
 };
 
 /**
@@ -49,7 +51,8 @@ struct ComputeBamFeaturesCliParams {
  * @param cli_params A ParallelComputeFeaturesParam struct that contains user specified options
  * @returns The number of bases covered by reads processed
  */
-u32 ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params);
+u64 ParallelComputeBamFeatures(  // NOSONAR - used via std::function in apps/
+    const ComputeBamFeaturesCliParams& cli_params);
 
 /**
  * @brief Extracts read group IDs for the specified sample name from the BAM file header(s).
@@ -72,7 +75,7 @@ class ComputeBamFeatures {
    * @param cli_params A ParallelComputeFeaturesParam struct that contains user specified options
    * @returns The number of bases covered by reads processed
    */
-  u32 ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params);
+  u64 ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params);
 
   /**
    * @brief Given a list of BAM files, this function reads the headers and indices to compute a
@@ -172,7 +175,7 @@ class ComputeBamFeatures {
   vec<ComputeBamRegionFeatures> _workers;
   vec<vec<AlignmentReader>> _alignment_readers;
   StrMap<std::string> _ref_seqs{};
-  std::atomic_uint32_t _bases_covered;
+  std::atomic_uint64_t _bases_covered{0};
   std::unique_ptr<LockedTsvWriter> _writer;
   // In the `tumor-normal-wgs` workflow, BAM files are expected to contain reads from both tumor and normal samples.
   // Tumor and normal samples are distinguished by their read group ("RG") IDs.

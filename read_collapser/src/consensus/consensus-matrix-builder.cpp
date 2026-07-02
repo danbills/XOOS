@@ -1,9 +1,12 @@
 #include "consensus/consensus-matrix-builder.h"
 
+#include <algorithm>
 #include <ranges>
 #include <unordered_map>
 
 #include <htslib/sam.h>
+
+#include <spoa/alignment_engine.hpp>
 
 #include <xoos/error/error.h>
 #include <xoos/types/int.h>
@@ -78,7 +81,7 @@ static inline size_t ConsensusMatrixWidth(const InsertionMap& aligned_insertions
       total_aligned_insertion_length += aligned_insertion.front().length();
     }
   }
-  return total_aligned_insertion_length + (rightmost_rpos - leftmost_rpos);
+  return total_aligned_insertion_length + math::SatSub(rightmost_rpos, leftmost_rpos);
 }
 
 /**
@@ -406,7 +409,7 @@ static void CollectInsertionsForRead(const AlignmentPtr& alignment,
  *                   is a vector of strings representing the sequences to be aligned.
  */
 static void AlignInsertions(InsertionMap& insertions) {
-  PoaAligner msa_aligner(kMatchScore, kMismatchPenalty, kGapOpenPenalty, kGapExtPenalty);
+  PoaAligner msa_aligner(kMatchScore, kMismatchPenalty, kGapOpenPenalty, kGapExtPenalty, spoa::AlignmentType::kNW);
   for (const auto& [position, insertionSequences] : insertions) {
     insertions[position] = msa_aligner.ComputeMSA(insertionSequences);
   }
@@ -507,16 +510,26 @@ ConsensusMatrix BuildConsensusMatrix(const std::vector<AlignmentPtr>& reads_in_c
   return BuildConsensusMatrix(aligned_insertions, reads_in_cluster, hd_deconvolve_enabled, trim_overhangs);
 }
 
-ConsensusMatrix BuildConsensusMatrix(const vec<std::string>& sequences, const vec<AlignmentPtr>& reads_in_cluster) {
-  if (sequences.empty()) {
+ConsensusMatrix BuildSoftclipConsensusMatrix(const vec<SoftclipSequence>& sequences_with_base_types,
+                                             const vec<AlignmentPtr>& reads_in_cluster,
+                                             const bool hd_deconvolve_enabled) {
+  if (sequences_with_base_types.empty()) {
     return ConsensusMatrix{};
   }
-  if (reads_in_cluster.size() != sequences.size()) {
+  if (reads_in_cluster.size() != sequences_with_base_types.size()) {
     throw error::Error("Number of sequences does not match number of alignments in the cluster");
   }
-  PoaAligner msa_aligner(kMatchScore, kMismatchPenalty, kGapOpenPenalty, kGapExtPenalty);
+  PoaAligner msa_aligner(kMatchScore, kMismatchPenalty, kGapOpenPenalty, kGapExtPenalty, spoa::AlignmentType::kSW);
+  vec<std::string> sequences;
+  std::ranges::transform(sequences_with_base_types, std::back_inserter(sequences), [](const SoftclipSequence& seq) {
+    return seq.sequence;
+  });
   auto msa_result = msa_aligner.ComputeMSA(sequences);
-  ConsensusMatrix consensus_matrix(sequences.size(), msa_result.front().length());
+  ConsensusMatrix consensus_matrix(sequences_with_base_types.size(), msa_result.front().length());
+  if (hd_deconvolve_enabled) {
+    consensus_matrix.SetBaseTypes(
+        consensus_matrix.GetReadCount(), consensus_matrix.GetConsensusLength(), yc_decode::BaseType::kSimplex);
+  }
   for (size_t read_index = 0; read_index < sequences.size(); ++read_index) {
     PreprocessConsensusMatrix(consensus_matrix, read_index, reads_in_cluster[read_index]);
     const auto& seq = msa_result[read_index];
@@ -530,8 +543,59 @@ ConsensusMatrix BuildConsensusMatrix(const vec<std::string>& sequences, const ve
       pos = first_non_gap_base != std::string::npos ? first_non_gap_base : 0;
       last_pos = last_non_gap_base != std::string::npos ? last_non_gap_base + 1 : 0;
     }
+    // Track homopolymer ranges if HD deconvolution is enabled.
+    size_t old_pos = 0;
+    size_t hp_start = 0;
+    size_t hp_end = 0;
+    char previous_base = kBaseGap;
     for (; pos < last_pos; ++pos) {
       consensus_matrix.SetBase(read_index, pos, seq[pos]);
+      if (hd_deconvolve_enabled) {
+        if (seq[pos] != kBaseGap && !sequences_with_base_types.at(read_index).base_types.empty()) {
+          consensus_matrix.SetBaseType(read_index, pos, sequences_with_base_types[read_index].base_types[old_pos]);
+          ++old_pos;
+        }
+        // Update homopolymer range as we fill the consensus matrix if HD deconvolution is enabled
+        if (seq[pos] != kBaseGap) {
+          if (seq[pos] == previous_base) {
+            // Extend the homopolymer range
+            hp_end = pos;
+          } else {
+            // We encountered a different base, so we close the previous homopolymer range,
+            // record it, and start a new one.
+            if (hp_start < hp_end) {
+              consensus_matrix.AddHomopolymerRange(hp_start, hp_end);
+            }
+            // Start a new homopolymer range
+            hp_start = pos;
+            hp_end = pos;
+            previous_base = seq[pos];
+          }
+        }
+      }
+    }
+    // Close the last homopolymer range if it exists
+    if (hp_start < hp_end && hd_deconvolve_enabled) {
+      consensus_matrix.AddHomopolymerRange(hp_start, hp_end);
+    }
+    // Set trailing and leading gaps to 'P' for partial reads
+    if (reads_in_cluster[read_index]->IsPartial() ||
+        (hd_deconvolve_enabled && (reads_in_cluster[read_index]->mate_has_left_overhang))) {
+      for (size_t i = 0; i < pos; ++i) {
+        if (consensus_matrix.GetBase(read_index, i) != kBaseGap) {
+          break;
+        }
+        consensus_matrix.SetBase(read_index, i, kBaseP);
+      }
+    }
+    if (reads_in_cluster[read_index]->IsPartial() ||
+        (hd_deconvolve_enabled && (reads_in_cluster[read_index]->mate_has_right_overhang))) {
+      for (size_t i = last_pos; i < seq.size(); ++i) {
+        if (consensus_matrix.GetBase(read_index, i) != kBaseGap) {
+          break;
+        }
+        consensus_matrix.SetBase(read_index, i, kBaseP);
+      }
     }
   }
   return consensus_matrix;

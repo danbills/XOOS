@@ -111,7 +111,8 @@ bool TrainingDataSet::InsertRow(const VariantId& vid, const vec<f64>& feature_ve
 
 void TrainingDataSet::WriteData(LockedTsvWriter& writer,
                                 const vec<std::string>& feature_names,
-                                const bool germline_genotype) const {
+                                const bool germline_genotype,
+                                const io::CommandLineInfo& command_line) const {
   if (feature_names.size() != feature_vec_size) {
     throw error::Error(
         "Scoring feature names size ({}) does not match the expected feature vector size ({}). "
@@ -119,6 +120,9 @@ void TrainingDataSet::WriteData(LockedTsvWriter& writer,
         feature_names.size(),
         feature_vec_size);
   }
+
+  // write version and command line as metadata
+  writer.AppendMetadata(command_line);
 
   // write header row to file
   // VARIANT, LABEL, FEATURE_1, FEATURE_2, ...

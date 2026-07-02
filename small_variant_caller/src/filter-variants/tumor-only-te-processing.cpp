@@ -3,8 +3,10 @@
 #include <xoos/util/container-functions.h>
 #include <xoos/util/string-functions.h>
 
+#include "core/sequencing-protocol.h"
 #include "core/variant-feature-extraction.h"
 #include "core/vcf-fields.h"
+#include "shap-value-tsv.h"
 
 namespace xoos::svc {
 
@@ -42,13 +44,21 @@ static bool ContainsChromPosition(const StrUnorderedMap<std::unordered_set<u64>>
   return it->second.contains(pos);
 }
 
+/// Options for UpdateRecord / UpdatePhasedRecord to avoid adjacent bool parameters.
+struct RecordUpdateOptions {
+  bool is_hotspot{false};
+  bool is_duplex_protocol{false};
+};
+
 /**
  * @brief Update a VCF record with selected feature information. Intended for `somatic` workflow only.
  * @param record VCF record to be updated
  * @param bam_feat BamFeatureTuple containing variant and reference features
- * @param is_hotspot Indicates if the variant is a hotspot
+ * @param opts Update options (hotspot flag, duplex protocol flag)
  */
-static void UpdateRecord(const io::VcfRecordPtr& record, const BamFeatureTuple& bam_feat, const bool is_hotspot) {
+static void UpdateRecord(const io::VcfRecordPtr& record,
+                         const BamFeatureTuple& bam_feat,
+                         const RecordUpdateOptions& opts) {
   const auto& var_feat = bam_feat.var_feat;
   const auto& ref_feat = bam_feat.ref_feat;
   record->SetFormatField(kWeightedCountsId, vec<f32>{static_cast<f32>(var_feat.weighted_score)});
@@ -63,16 +73,31 @@ static void UpdateRecord(const io::VcfRecordPtr& record, const BamFeatureTuple& 
   record->SetFormatField(
       kAlleleDepthId,
       vec<s32>{static_cast<s32>(ref_feat.support), static_cast<s32>(var_feat.duplex + var_feat.nonduplex)});
-  if (is_hotspot) {
+  if (opts.is_hotspot) {
     record->SetFormatField(kHotspotId, vec<s32>{1});
+  }
+  if (opts.is_duplex_protocol) {
+    record->SetFormatField(
+        kDuplexConcordantCountsId,
+        vec<s32>{static_cast<s32>(ref_feat.duplex_concordant), static_cast<s32>(var_feat.duplex_concordant)});
+    record->SetFormatField(
+        kDuplexSimplexCountsId,
+        vec<s32>{static_cast<s32>(ref_feat.duplex_simplex), static_cast<s32>(var_feat.duplex_simplex)});
+    record->SetFormatField(
+        kDuplexDiscordantCountsId,
+        vec<s32>{static_cast<s32>(ref_feat.duplex_discordant), static_cast<s32>(var_feat.duplex_discordant)});
+    record->SetFormatField(kDuplexLowbqCountsId,
+                           vec<s32>{static_cast<s32>(std::round(ref_feat.duplex_lowbq * kDuplexLowbqToCountFactor)),
+                                    static_cast<s32>(std::round(var_feat.duplex_lowbq * kDuplexLowbqToCountFactor))});
   }
 }
 
 /**
  * @brief Update a phased VCF record with empty values. Intended for `somatic` workflow only.
  * @param record VCF record to be updated
+ * @param opts Update options (duplex protocol flag)
  */
-static void UpdatePhasedRecord(const io::VcfRecordPtr& record) {
+static void UpdatePhasedRecord(const io::VcfRecordPtr& record, const RecordUpdateOptions& opts) {
   // Phased calls don't use ML based filtering and do not have values for these fields
   record->SetFormatField(kWeightedCountsId, vec<f32>{static_cast<f32>(0.0)});
   record->SetFormatField(kMachineLearningId, vec<f32>{static_cast<f32>(0.0)});
@@ -82,6 +107,12 @@ static void UpdatePhasedRecord(const io::VcfRecordPtr& record) {
   record->SetFormatField(kPlusOnlyCountsId, vec<s32>{0});
   record->SetFormatField(kMinusOnlyCountsId, vec<s32>{0});
   record->SetFormatField(kSequenceContextId, vec<std::string>{"NA"});
+  if (opts.is_duplex_protocol) {
+    record->SetFormatField(kDuplexConcordantCountsId, vec<s32>{0, 0});
+    record->SetFormatField(kDuplexSimplexCountsId, vec<s32>{0, 0});
+    record->SetFormatField(kDuplexDiscordantCountsId, vec<s32>{0, 0});
+    record->SetFormatField(kDuplexLowbqCountsId, vec<s32>{0, 0});
+  }
 }
 
 /**
@@ -107,7 +138,8 @@ TumorOnlyTeProcessing::TumorOnlyTeProcessing(const GlobalContext& global_ctx,
       _vcf_features(std::move(vcf_features)),
       _bam_features(std::move(bam_features)),
       _hdr(global_ctx.hdr),
-      _phased(global_ctx.phased) {
+      _phased(global_ctx.phased),
+      _is_duplex_protocol(IsDuplexProtocol(global_ctx.bam_feat_params.sequencing_protocol)) {
   // Set forced call positions
   _forced_call_chrom_pos = global_ctx.force_calls.has_value() ? GetChromToPositionSet(global_ctx.force_calls.value())
                                                               : StrUnorderedMap<std::unordered_set<u64>>{};
@@ -125,7 +157,8 @@ TumorOnlyTeProcessing::TumorOnlyTeProcessing(const GlobalContext& global_ctx,
 std::optional<BamFeatureTuple> TumorOnlyTeProcessing::ScoreVariant(const VariantId& vid,
                                                                    const ChromMedianDepth& normalize_targets,
                                                                    const vec<FeatureColumn>& scoring_cols,
-                                                                   const ScoreCalculator& somatic_calculator) {
+                                                                   const ScoreCalculator& somatic_calculator,
+                                                                   vec<vec<std::string>>& shap_value_rows) {
   // Not using `TumorNormalBamFeatureRow` here because there is no distinction for tumor/normal in tumor-only TE
   std::optional<BamFeatureTuple> bam_feat = _bam_features.GetBamFeatureTuple(vid);
 
@@ -136,7 +169,11 @@ std::optional<BamFeatureTuple> TumorOnlyTeProcessing::ScoreVariant(const Variant
     const DepthTuple& normalize_target = normalize_targets.GetValue(vid.chrom);
 
     const auto feature_vec = GetFeatureVec(scoring_cols, vid, bam_feat.value(), vcf_feat, normalize_target);
-    bam_feat->var_feat.ml_score = somatic_calculator.CalculateScore(feature_vec);
+    const auto score = somatic_calculator.CalculateScore(feature_vec);
+    bam_feat->var_feat.ml_score = score.probability;
+    if (!score.shap_values.empty()) {
+      shap_value_rows.emplace_back(AssembleShapValueTsvRow(vid, score));
+    }
     bam_feat->var_feat.filter_status = FilterVariant(vid, bam_feat->var_feat, bam_feat->ref_feat, _filter_settings);
     return bam_feat;
   }
@@ -150,8 +187,6 @@ void TumorOnlyTeProcessing::CreateNewForceRecordsForInbetweenPositions(const u64
   // position. Any forced calls that need to be made should be done so before dealing with the current record to keep
   // the sorted order intact.
   const u64 max_pos_to_check = pos;
-  // TODO: Handle case where there are no VCF records for a chromosome but there are features and forced
-  // sites Check if we have any remaining variants in force set
 
   const auto chrom_it = _forced_call_chrom_pos_to_vids.find(chrom);
   if (chrom_it == _forced_call_chrom_pos_to_vids.end()) {
@@ -183,7 +218,7 @@ void TumorOnlyTeProcessing::CreateNewForceRecordsForInbetweenPositions(const u64
       SetupForceRecord(new_record, vid);
       const auto key_to_check = GetVariantCorrelationKey(chrom, i, vid.ref, vid.alt, false);
       const auto is_hotspot = _filter_settings.hotspots.contains(key_to_check);
-      UpdateRecord(new_record, bam_feat.value(), is_hotspot);
+      UpdateRecord(new_record, bam_feat.value(), {.is_hotspot = is_hotspot, .is_duplex_protocol = _is_duplex_protocol});
       out_records.emplace_back(new_record);
     }
     _seen_forced_call_chrom_pos[chrom].insert(i);
@@ -225,7 +260,8 @@ void TumorOnlyTeProcessing::ProcessRecord(const VariantId& vid,
       record_copy->AddFilter(item);
     }
     auto is_hotspot = _filter_settings.hotspots.contains(key_unpadded);
-    UpdateRecord(record_copy, bam_feature.value(), is_hotspot);
+    UpdateRecord(
+        record_copy, bam_feature.value(), {.is_hotspot = is_hotspot, .is_duplex_protocol = _is_duplex_protocol});
     out_records.emplace_back(record_copy);
     found = true;
   } else if (phased_record) {
@@ -244,7 +280,7 @@ void TumorOnlyTeProcessing::ProcessRecord(const VariantId& vid,
     for (const auto& item : filters) {
       record_copy->AddFilter(item);
     }
-    UpdatePhasedRecord(record_copy);
+    UpdatePhasedRecord(record_copy, {.is_duplex_protocol = _is_duplex_protocol});
     out_records.emplace_back(record_copy);
   }
   if (make_forcedcalls && found && ContainsChromPosition(_forced_call_chrom_pos, vid.chrom, vid.pos)) {

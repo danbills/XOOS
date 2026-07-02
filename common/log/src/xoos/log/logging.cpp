@@ -20,7 +20,7 @@ static std::optional<V> Find(const std::unordered_map<K, V>& elements, const K& 
 }
 
 std::optional<LogLevel> ParseLogLevel(const std::string& level) {
-  auto levels = std::unordered_map<std::string, LogLevel>{
+  static const auto levels = std::unordered_map<std::string, LogLevel>{
       {"debug", LogLevel::kDebug},
       {"info", LogLevel::kInfo},
       {"warn", LogLevel::kWarn},
@@ -59,7 +59,7 @@ void Logging::Initialize(const std::optional<std::string>& out_file) {
   }
 
   logger = std::make_unique<spdlog::logger>(spdlog::logger("multi_sink", sinks.begin(), sinks.end()));
-  // ISO 8601-like timestamp (date + 'T' time, numeric UTC offset in ±HHMM), with log level and thread id.
+  // RFC 2822 compliant (ISO 8601 has a colon in -07:00), with log level and thread id.
   // Example: [2026-03-20T21:55:33.034-0700] [I] [thread 12345] This is a log message.
   logger->set_pattern("[%Y-%m-%dT%H:%M:%S.%e%z] [%^%L%$] [thread %t] %v");
 

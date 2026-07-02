@@ -2,13 +2,13 @@
 
 #include <memory>
 #include <optional>
-#include <string>
 
 #include <htslib/sam.h>
 
 #include <CLI/Formatter.hpp>
 
 #include <xoos/cli/cli.h>
+#include <xoos/io/metadata-util.h>
 #include <xoos/types/float.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
@@ -24,7 +24,6 @@ enum class HDDeconvolutionType {
 
 enum class ReadCollapserPresets {
   kWgsDuplex,
-  kWgsDuplexMrd,
   kWgsDuplexCfdna,
   kWgsSimplex,
   kTeDuplex,
@@ -40,6 +39,7 @@ struct ReadCollapserOptions {
   s32 padding{};
 
   fs::path output_dir{};
+  bool overwrite{false};
   bool merge_output{false};
 
   u8 min_mapq{};
@@ -52,14 +52,17 @@ struct ReadCollapserOptions {
   bool make_clusters_of_partial_reads_only{false};
   u8 wiggle_room{};
   u8 wiggle_room_partial{};
+  bool ignore_read_name_parsing_errors{false};
 
   size_t threads{};
   u32 region_size{};
   u32 batch_size{};
 
   // Markdup options
+  bool cluster_rescued_secondaries{false};
   bool remove_duplicates{false};
   bool exclude_cluster_tags{false};
+  bool mark_supplementary_alignments{false};
 
   // Consensus options
   u8 compression_level{};
@@ -71,7 +74,7 @@ struct ReadCollapserOptions {
   u8 min_mixed_strand_cluster_size{};
   f64 consensus_threshold{};
   f64 consensus_gap_threshold{};
-  bool include_softclips{false};
+  bool skip_softclips{false};
   bool enable_legacy_qscore_model{false};
   HDDeconvolutionType duplex_library_type{};
   std::optional<u32> min_consensus_read_length{};
@@ -81,9 +84,7 @@ struct ReadCollapserOptions {
   bool include_per_base_majority_count_tags{false};
 
   // Program information
-  std::string command_line{};
-  std::string program_name{};
-  std::string version{};
+  io::CommandLineInfo command_line_info{};
 };
 
 using ReadCollapserOptionsPtr = std::shared_ptr<ReadCollapserOptions>;

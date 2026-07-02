@@ -38,7 +38,8 @@ class TumorOnlyTeProcessing {
   std::optional<BamFeatureTuple> ScoreVariant(const VariantId& vid,
                                               const ChromMedianDepth& normalize_targets,
                                               const vec<FeatureColumn>& scoring_cols,
-                                              const ScoreCalculator& somatic_calculator);
+                                              const ScoreCalculator& somatic_calculator,
+                                              vec<vec<std::string>>& shap_value_rows);
 
   /**
    * @brief Create new VCF records for any forced calls between the previous position and the current position.
@@ -79,6 +80,7 @@ class TumorOnlyTeProcessing {
   StrUnorderedMap<std::unordered_set<u64>> _forced_call_chrom_pos;
   StrUnorderedMap<std::unordered_map<u64, vec<VariantId>>> _forced_call_chrom_pos_to_vids;
   bool _phased;
+  bool _is_duplex_protocol;
 
   StrUnorderedMap<std::unordered_set<u64>> _seen_forced_call_chrom_pos{};
 };

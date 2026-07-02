@@ -47,10 +47,10 @@ static const std::string kAlleleDepthId = "AD";
 static const std::string kPhysicalPhasedId = "PID";
 static const std::string kHotspotId = "HS";
 static const std::string kGermlineMLId = "ML_PROCESSED";
-static const std::string kGermlineGATKDPId = "GATK_DP";
-static const std::string kGermlineGATKGTId = "GATK_GT";
-static const std::string kGermlineGATKADId = "GATK_AD";
-static const std::string kGermlineGATKAltId = "GATK_ALT";
+static const std::string kDuplexConcordantCountsId = "ADC";
+static const std::string kDuplexSimplexCountsId = "ADS";
+static const std::string kDuplexDiscordantCountsId = "ADD";
+static const std::string kDuplexLowbqCountsId = "ADL";
 static const std::string kGermlineGnomadAFId = "GNOMAD_AF";
 static const std::string kGermlineRefAvgMapqId = "REF_AVG_MAPQ";
 static const std::string kGermlineAltAvgMapqId = "ALT_AVG_MAPQ";
@@ -81,10 +81,14 @@ static const std::string kSequenceContextDesc = "2 bp sequence context";
 static const std::string kPhysicalPhasedDesc = "Physical Phasing ID";
 static const std::string kHotspotDesc = "Hotspot Variant";
 static const std::string kGermlineMLDesc = "1 if variant was processed by ML and 0 otherwise";
-static const std::string kGermlineGATKDPDesc = "DP reported by GATK";
-static const std::string kGermlineGATKGTDesc = "GT reported by GATK";
-static const std::string kGermlineGATKADDesc = "AD reported by GATK";
-static const std::string kGermlineGATKAltDesc = "ALT reported by GATK";
+static const std::string kDuplexConcordantCountsDesc =  // NOSONAR
+    "Allelic depths of concordant molecules for the ref and alt alleles in the order listed";
+static const std::string kDuplexSimplexCountsDesc =  // NOSONAR
+    "Allelic depths of simplex molecules for the ref and alt alleles in the order listed";
+static const std::string kDuplexDiscordantCountsDesc =  // NOSONAR
+    "Allelic depths of discordant molecules for the ref and alt alleles in the order listed";
+static const std::string kDuplexLowbqCountsDesc =  // NOSONAR
+    "Allelic depths of lowbq molecules for the ref and alt alleles in the order listed";
 static const std::string kGermlineGnomadAFDesc = "Gnomad allele frequency or -1 if not used by ML";
 static const std::string kGermlineRefAvgMapqDesc =
     "Average mapping quality for reads supporting REF or -1 if not used in ML";

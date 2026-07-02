@@ -1,5 +1,4 @@
-add_library(xoos_cli
-        STATIC
+add_default_library(xoos_cli
         xoos/cli/bam-option-util.cpp
         xoos/cli/cli.cpp
         xoos/cli/fasta-option-util.cpp
@@ -35,11 +34,12 @@ find_package(xoos-htslib REQUIRED)
 target_link_libraries(xoos_cli PUBLIC xoos-htslib::xoos-htslib)
 
 target_link_xoos_libraries(xoos_cli
+        PUBLIC
+        types
+        enum
+        io
         PRIVATE
         log
         util
-        types
-        enum
         error
-        io
 )

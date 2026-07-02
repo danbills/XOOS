@@ -5,6 +5,8 @@
 #include <memory>
 
 #include <xoos/types/fs.h>
+#include <xoos/types/int.h>
+#include <xoos/types/vec.h>
 
 /**
  * @file gzip.h
@@ -145,6 +147,20 @@ void GzError(gzFile file);
  * @note The entire data buffer is written in a single operation.
  *       For large data, consider writing in chunks.
  */
+void GzWrite(gzFile file, const char* data, u32 size);
+
+/**
+ * @brief Writes data to a gzip file, validating size before writing.
+ *
+ * Convenience overload that accepts size_t and validates it fits in u32
+ * before delegating to the u32 overload.
+ *
+ * @param file The gzip file to write to
+ * @param data Pointer to the data to write
+ * @param size Number of bytes to write
+ *
+ * @throws std::runtime_error if size exceeds u32 max or the write fails
+ */
 void GzWrite(gzFile file, const char* data, size_t size);
 
 /**
@@ -168,18 +184,46 @@ void GzSetParams(gzFile file, int level, int strategy);
  * @brief Reads data from a gzip file with error checking.
  *
  * Reads up to the specified number of bytes from a gzip file.
- * Returns the actual number of bytes read.
  *
  * @param file The gzip file to read from
  * @param buffer Buffer to read data into
  * @param size Maximum number of bytes to read
- * @return Number of bytes actually read
+ * @return Number of bytes actually read, or 0 at EOF
  *
  * @throws std::runtime_error if the read operation fails
  *
  * @note Returns fewer bytes than requested when EOF is reached.
  *       The buffer must be pre-allocated to at least 'size' bytes.
  */
-int GzRead(gzFile file, char* buffer, size_t size);
+s32 GzRead(gzFile file, char* buffer, u32 size);
+
+/**
+ * @brief Reads data from a gzip file, validating size before reading.
+ *
+ * Convenience overload that accepts size_t and validates it fits in u32
+ * before delegating to the u32 overload.
+ *
+ * @param file The gzip file to read from
+ * @param buffer Buffer to read data into
+ * @param size Maximum number of bytes to read
+ * @return Number of bytes actually read, or 0 at EOF
+ *
+ * @throws std::runtime_error if size exceeds u32 max or the read fails
+ */
+s32 GzRead(gzFile file, char* buffer, size_t size);
+
+/**
+ * @brief Reads data from a gzip file into a vector buffer.
+ *
+ * Convenience overload that reads into the full capacity of the provided
+ * vector buffer.
+ *
+ * @param file The gzip file to read from
+ * @param buffer Vector buffer to read data into (uses buffer.size() as read size)
+ * @return Number of bytes actually read, or 0 at EOF
+ *
+ * @throws std::runtime_error if buffer size exceeds u32 max or the read fails
+ */
+s32 GzRead(gzFile file, vec<char>& buffer);
 
 }  // namespace xoos::compress

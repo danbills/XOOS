@@ -144,15 +144,8 @@ void TrainingController::GetPositiveDataForGermline(const size_t sid,
 
 void TrainingController::GetPositiveDataForTumorNormalWgs(const size_t sid,
                                                           const vec<FeatureColumn>& columns,
-                                                          TrainingDataSet& data) {
-  const auto& truth_vcf = _param.truth_vcfs.at(sid);
-  Logging::Info("Loading truth VCF from {}", truth_vcf);
-  const auto truth_vids = GetVariantIdSet(truth_vcf);
-  if (truth_vids.empty()) {
-    throw error::Error("No valid variants found in truth VCF: {}\nPlease check your input truth VCF file(s).",
-                       truth_vcf);
-  }
-
+                                                          TrainingDataSet& data,
+                                                          const std::unordered_set<VariantId>& truth_vids) {
   // Load VCF features
   const auto& vcf_feat_file = _param.positive_vcf_features.at(sid);
   Logging::Info("Loading positive VCF features from {}", vcf_feat_file);
@@ -259,7 +252,8 @@ void TrainingController::GetNegativeDataForTumorOnlyTe(const size_t sid,
 
 void TrainingController::GetNegativeDataForTumorNormalWgs(const size_t sid,
                                                           const vec<FeatureColumn>& columns,
-                                                          TrainingDataSet& data) {
+                                                          TrainingDataSet& data,
+                                                          const std::unordered_set<VariantId>& exclude_vids) {
   const auto& vcf_feat_file = _param.negative_vcf_features.at(sid);
   Logging::Info("Loading negative VCF features from {}", vcf_feat_file);
   const auto& vcf_feats = VariantInfoSerializer::LoadVcfFeatures(vcf_feat_file, true);
@@ -271,7 +265,7 @@ void TrainingController::GetNegativeDataForTumorNormalWgs(const size_t sid,
   const auto generator = VariantInfoSerializer::TumorNormalBamFeatureTupleGenerator(bam_feat_file);
   while (auto record = generator()) {
     const auto& [vid, bam_feat] = record.value();
-    if (!vcf_feats.empty() && !vcf_feats.contains(vid)) {
+    if (exclude_vids.contains(vid) || (!vcf_feats.empty() && !vcf_feats.contains(vid))) {
       continue;
     }
     const auto& vcf_feat = vcf_feats.at(vid);
@@ -297,9 +291,21 @@ void TrainingController::TrainTumorNormalWgs() {
 
   TrainingDataSet data;
 
-  // Load training data for positive samples
+  // Load training data for positive samples, building the union of all truth VariantIds along the way.
+  // The union ensures that variants marked as true positives in any sample are excluded from negative
+  // training data across all samples, preventing label conflicts. Reusing this set also avoids parsing
+  // each truth VCF a second time when loading negative samples.
+  std::unordered_set<VariantId> truth_vids;
   for (size_t sid = 0; sid < _param.positive_features.size(); ++sid) {
-    GetPositiveDataForTumorNormalWgs(sid, _config.scoring_cols, data);
+    const auto& truth_vcf = _param.truth_vcfs.at(sid);
+    Logging::Info("Loading truth VCF from {}", truth_vcf);
+    const auto sample_truth_vids = GetVariantIdSet(truth_vcf);
+    if (sample_truth_vids.empty()) {
+      throw error::Error("No valid variants found in truth VCF: {}\nPlease check your input truth VCF file(s).",
+                         truth_vcf);
+    }
+    GetPositiveDataForTumorNormalWgs(sid, _config.scoring_cols, data, sample_truth_vids);
+    truth_vids.insert(sample_truth_vids.begin(), sample_truth_vids.end());
   }
 
   // Validate the number of positive training data points loaded
@@ -319,7 +325,7 @@ void TrainingController::TrainTumorNormalWgs() {
     // No need to update downsampling labels for sample 0 because it is the first sample to be loaded.
     // No need to update downsampling labels for samples after sample 1 because there is only one negative label.
 
-    GetNegativeDataForTumorNormalWgs(sid, _config.scoring_cols, data);
+    GetNegativeDataForTumorNormalWgs(sid, _config.scoring_cols, data, truth_vids);
   }
 
   // Validate the number of negative training data points loaded
@@ -330,7 +336,12 @@ void TrainingController::TrainTumorNormalWgs() {
   }
 
   ModelTrainer trainer(data, _config, _workflow);
-  trainer.Train(_param.output_file, _param.threads, _param.iterations, VariantGroup::kAll, _param.output_training_data);
+  trainer.Train(_param.output_file,
+                _param.threads,
+                _param.iterations,
+                VariantGroup::kAll,
+                _param.output_training_data,
+                _param.command_line);
 }
 
 void TrainingController::TrainTumorOnlyTe() {
@@ -361,7 +372,12 @@ void TrainingController::TrainTumorOnlyTe() {
   }
 
   ModelTrainer trainer(data, _config, _workflow);
-  trainer.Train(_param.output_file, _param.threads, _param.iterations, VariantGroup::kAll, _param.output_training_data);
+  trainer.Train(_param.output_file,
+                _param.threads,
+                _param.iterations,
+                VariantGroup::kAll,
+                _param.output_training_data,
+                _param.command_line);
 }
 
 void TrainingController::TrainGermline() {
@@ -407,7 +423,8 @@ void TrainingController::TrainGermline() {
                       _param.threads,
                       _param.snv_iterations,
                       VariantGroup::kSnvOnly,
-                      _param.snv_output_training_data);
+                      _param.snv_output_training_data,
+                      _param.command_line);
     // Clear SNV training data from memory before training indel model, to reduce overall memory usage since SNV
     // training data is not needed for training indel model.
     snv_data.ClearData();
@@ -419,7 +436,8 @@ void TrainingController::TrainGermline() {
                       _param.threads,
                       _param.indel_iterations,
                       VariantGroup::kIndelOnly,
-                      _param.indel_output_training_data);
+                      _param.indel_output_training_data,
+                      _param.command_line);
 }
 
 void TrainingController::TrainGermlineTagging() {
@@ -440,7 +458,12 @@ void TrainingController::TrainGermlineTagging() {
   }
 
   ModelTrainer trainer(data, _config, _workflow);
-  trainer.Train(_param.output_file, _param.threads, _param.iterations, VariantGroup::kAll, _param.output_training_data);
+  trainer.Train(_param.output_file,
+                _param.threads,
+                _param.iterations,
+                VariantGroup::kAll,
+                _param.output_training_data,
+                _param.command_line);
 }
 
 /**

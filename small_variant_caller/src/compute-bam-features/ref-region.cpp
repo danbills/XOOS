@@ -23,7 +23,7 @@ StrMap<RefRegion> GetRefRegions(const AlignmentReader& reader) {
     if (!has_next) {
       continue;
     }
-    const u64 start = b->core.pos - 1 < 0 ? 0UL : static_cast<u64>(b->core.pos - 1);
+    const u64 start = b->core.pos > 0 ? static_cast<u64>(b->core.pos - 1) : 0UL;
     const u64 len = io::SamHdrTid2Length(reader.hdr.get(), i);
     const u64 end = len;
     const RefRegion region{

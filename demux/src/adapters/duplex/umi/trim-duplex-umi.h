@@ -7,9 +7,8 @@ namespace xoos::demux {
 
 class TrimDuplexUmi : public TrimDuplexStem {
  public:
-  TrimDuplexUmi(SeqMatcher sid_5p_matcher, SeqMatcher sid_3p_matcher, SeqMatcher start_matcher, SeqMatcher end_matcher,
-                const SeqMatcher& stem_5p_matcher, const SeqMatcher& stem_3p_matcher, SeqMatcher umi_5p_matcher,
-                SeqMatcher umi_3p_matcher, std::string_view loop_sequence);
+  TrimDuplexUmi(SeqMatcher runway_5p_matcher, SeqMatcher start_matcher, const SeqMatcher& stem_5p_matcher,
+                const SeqMatcher& stem_3p_matcher, SeqMatcher umi_5p_matcher, SeqMatcher umi_3p_matcher);
 
   std::pair<s32, s32> FindUMI(FixedReadRecord& record) const;
 

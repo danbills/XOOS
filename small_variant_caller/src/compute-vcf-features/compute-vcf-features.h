@@ -4,14 +4,15 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 
+#include <xoos/io/metadata-util.h>
 #include <xoos/io/vcf/vcf-reader.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
 #include <xoos/types/str-container.h>
 #include <xoos/types/vec.h>
 
-#include "core/command-line-info.h"
 #include "core/config.h"
 #include "core/variant-info.h"
 #include "core/workflow.h"
@@ -39,7 +40,7 @@ struct ComputeVcfFeaturesParam {
   u64 left_pad{};       // Number of bases to include before the variant's start position for output BED
   u64 right_pad{};      // Number of bases to include after the variant's start position for output BED
   u32 collapse_dist{};  // Distance for collapsing nearby intervals for output BED
-  std::optional<CommandLineInfo> command_line;
+  std::optional<io::CommandLineInfo> command_line;
 };
 
 using ChromToIndexes = std::map<std::string, s32>;
@@ -97,6 +98,15 @@ u16 CheckVcfFeatureResources(const vec<FeatureColumn>& feat_cols,
                              bool has_popaf_vcf);
 
 /**
+ * @brief Compute the start and end coordinates of a GC content window centered on a position.
+ * @param pos Variant position (0-based)
+ * @param seq_len Length of the reference sequence (chromosome)
+ * @param half_window Half-window size (number of bases upstream and downstream)
+ * @return Pair of (start, end) where start is inclusive and end is exclusive, clamped to [0, seq_len]
+ */
+std::pair<u64, u64> GetGcContentWindow(u64 pos, u64 seq_len, u64 half_window);
+
+/**
  * @brief Structure to hold counts of different types of tandem repeats.
  */
 struct RepeatCounts {
@@ -118,7 +128,7 @@ struct RepeatCounts {
  *   - Both repeat types cover the same number of bases, i.e. 4 x 2bp == 2 x 4bp.
  *   - Choose the repeat type with the largest number of repetitions (4x "AT" in this case).
  */
-RepeatCounts GetRepeatCounts(const std::string& seq);
+RepeatCounts GetRepeatCounts(std::string_view seq);
 
 /**
  * @brief Extract relevant information from VCF header.
@@ -136,6 +146,20 @@ VcfHeaderInfo GetVcfHeaderInfo(const std::shared_ptr<io::VcfHeader>& header);
  */
 void ComputeVcfFeatures(const ComputeVcfFeaturesParam& param);
 
+// Forward declaration — full definition in parallel-compute-utils.h
+struct VariantPreScanEntry;
+
+/**
+ * @brief Additional parameters for VCF feature extraction beyond the core reader and region inputs.
+ * @details Bundles the germline tagging flag and optional pre-scan density data to keep the
+ * ExtractFeaturesForRegion parameter count within limits.
+ */
+struct VcfFeatureExtractionParams {
+  bool is_germline_tagging{false};
+  const StrMap<vec<VariantPreScanEntry>>* pre_scan_variants{nullptr};
+  const StrMap<vec<u32>>* pre_scan_density{nullptr};
+};
+
 /**
  * @brief Extract VCF features for target regions in the same chromosome, update POPAF and variant density.
  * @param vcf_reader VCF reader
@@ -143,11 +167,12 @@ void ComputeVcfFeatures(const ComputeVcfFeaturesParam& param);
  * @param popaf_reader POPAF VCF reader
  * @param target_regions Map of chromosome to vector of target intervals
  * @param interest_regions Map of chromosome to vector of repeat intervals
- * @param chrom Chromsome name of target regions
- * @param is_germline_tagging Flag to indicate whether to feature extraction is intended for germline tagging workflow
+ * @param chrom Chromosome name of target regions
+ * @param params Extraction parameters (germline tagging flag and optional pre-scan density context)
  * @return VcfFeaturesMap mapping VariantId to VcfFeature structs
  * @throws std::runtime_error if the chromosome is not found in the VCF header
- * @note This function extracts features for a single chromosome, specified by `chrom`.
+ * @note When params contains valid pre-scan pointers, variant density is looked up from the pre-scan data
+ * instead of being computed per-region, avoiding boundary artifacts at region edges.
  */
 VarIdToVcfFeatures ExtractFeaturesForRegion(io::VcfReader& vcf_reader,
                                             const fs::path& genome_path,
@@ -155,6 +180,6 @@ VarIdToVcfFeatures ExtractFeaturesForRegion(io::VcfReader& vcf_reader,
                                             const ChromIntervalsMap& target_regions,
                                             const ChromIntervalsMap& interest_regions,
                                             const std::string& chrom,
-                                            bool is_germline_tagging);
+                                            const VcfFeatureExtractionParams& params);
 
 }  // namespace xoos::svc

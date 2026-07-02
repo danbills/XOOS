@@ -121,8 +121,6 @@ void ComputeBamRegionFeatures::ComputeFeaturesForRead(const Region& region,
     // If the sequencing protocol is duplex and the YC tag decoding method is "Split", then
     // split the duplex read into two simplex reads (R1, R2) using the YC tag.
     auto decoded_records = yc_decode::DecodeToBamRecords(b);
-    // TODO: update `plus_counts` and `minus_counts`?
-    // This can get complicated in function `IncrementUnifiedFeature` within read-processing.cpp
     if (std::holds_alternative<std::monostate>(decoded_records)) {
       // No decoded records indicates that the YC tag is either absent or empty.
       // If input data is a hybrid of duplex reads and simplex reads, then this is a simplex read.
@@ -165,9 +163,12 @@ void ComputeBamRegionFeatures::ProcessVariantFeatures() {
   // Update derived feature values (e.g. mean, allele frequencies) for variant and reference features at each
   // reference position.
   for (auto& [pos, vids] : ref_pos_to_vids) {
-    UpdateDerivedFeatureValues(_bam_features.var_features, _bam_features.ref_features, vids);
+    UpdateDerivedFeatureValues(_bam_features.var_features,
+                               _bam_features.ref_features,
+                               vids,
+                               _params.duplex_lowbq == DuplexLowbqMode::kInclude);
     if (tally_tumor_normal_features) {
-      UpdateTumorNormalFeatures(_bam_features, vids);
+      UpdateTumorNormalFeatures(_bam_features, vids, _params.duplex_lowbq == DuplexLowbqMode::kInclude);
     }
   }
 
@@ -261,7 +262,6 @@ void ComputeBamRegionFeatures::GetGenomicRegionsForChromosome(const StrMap<RefRe
       regions_queue.emplace_back(chrom, start, end, prev_interval);
       prev_interval = Interval{start, end};
     }
-    // TODO: add dynamic partitioning that breaks up dense/high coverage regions
   }
 }
 

@@ -1,5 +1,7 @@
 #include "metrics/coverage-metrics/coverage-distribution-summary.h"
 
+#include <csv.hpp>
+
 #include <xoos/types/float.h>
 #include <xoos/types/int.h>
 #include <xoos/types/vec.h>
@@ -54,11 +56,12 @@ vec<std::string> CoverageDistributionSummary::GetHeaders() const {
   return headers;
 }
 
-void CoverageDistributionSummary::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void CoverageDistributionSummary::WriteTsv(const fs::path& output_path,
+                                           const io::CommandLineInfo& command_line_info) const {
   std::ofstream out(output_path);
   auto writer = csv::make_tsv_writer_buffered(out);
-  // Write comments
-  io::WriteTsvComments(writer, comments);
+  // Write metadata
+  io::WriteTsvMetadata(out, command_line_info);
   // Write header
   writer << GetHeaders();
   // Write total positions, positions with coverage, and positions with no coverage

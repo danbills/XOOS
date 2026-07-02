@@ -1,5 +1,4 @@
-add_library(svc_core
-        STATIC
+add_default_library(svc_core
         compute-bam-features/alignment-reader.cpp
         compute-bam-features/compute-bam-features-cli.cpp
         compute-bam-features/compute-bam-features.cpp
@@ -14,7 +13,7 @@ add_library(svc_core
         compute-vcf-features/vcf-header-util.cpp
         core/bam-feature-collection.cpp
         core/column-names.cpp
-        core/command-line-info.cpp
+
         core/config.cpp
         core/feature-normalization.cpp
         core/filtering.cpp
@@ -33,6 +32,7 @@ add_library(svc_core
         filter-variants/filter-region.cpp
         filter-variants/germline-tagging.cpp
         filter-variants/reconcile-germline.cpp
+        filter-variants/shap-value-tsv.cpp
         filter-variants/tumor-only-te-processing.cpp
         filter-variants/tumor-normal-processing.cpp
         train-model/model-trainer.cpp
@@ -40,17 +40,21 @@ add_library(svc_core
         train-model/train-model.cpp
         train-model/training-data-set.cpp
         train-model/truth-label-set.cpp
+        util/bgzf-utils.cpp
         util/cli-util.cpp
         util/file-util.cpp
         util/lightgbm-util.cpp
         util/locked-tsv-writer.cpp
         util/log-util.cpp
+        util/model-resolver.cpp
         util/parallel-compute-utils.cpp
         util/region-util.cpp
         util/seq-util.cpp
         util/vcf-util.cpp
         vcf-to-bed/vcf-to-bed-cli.cpp
         vcf-to-bed/vcf-to-bed.cpp
+        generate-pon/generate-pon-cli.cpp
+        generate-pon/generate-pon.cpp
 )
 target_include_directories(svc_core
         PRIVATE

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 #include <magic_enum/magic_enum.hpp>
@@ -9,6 +10,7 @@
 
 #include <xoos/error/error.h>
 #include <xoos/util/hash.h>
+#include <xoos/util/parse-int.h>
 #include <xoos/util/string-functions.h>
 
 #include "core/column-names.h"
@@ -33,6 +35,37 @@ static std::string EmptyStringToDot(const std::string& value) {
  */
 static std::string DotToEmptyString(const std::string& value) {
   return value == "." ? "" : value;
+}
+
+/**
+ * @brief Parse an RPA (Repeat Per Allele) value with backward compatibility.
+ *
+ * Feature TSVs produced by older versions serialized RPA as u32, meaning negative values
+ * were written as large unsigned integers (e.g., -1 became "4294967295"). This function
+ * accepts both the current signed format (e.g., "-1") and the legacy unsigned format, mapping
+ * values in the range (INT32_MAX, UINT32_MAX] back to their signed s32 equivalents.
+ *
+ * @param value String representation of an RPA value
+ * @return Parsed s32 value
+ * @throws xoos::error::Error if the value is out of u32 range or otherwise invalid
+ */
+static s32 ParseRpaValue(const std::string_view value) {
+  // ParseS64 accepts both negative strings (e.g., "-1") and large positive strings (e.g., "4294967295").
+  s64 parsed{};
+  try {
+    parsed = util::ParseS64(value);
+  } catch (const std::exception&) {
+    throw error::Error("Cannot parse RPA value '{}': not a valid integer", value);
+  }
+  if (parsed >= std::numeric_limits<s32>::min() && parsed <= std::numeric_limits<s32>::max()) {
+    return static_cast<s32>(parsed);
+  }
+  // Value is outside s32 range. If it fits in u32 it is a legacy underflowed value;
+  // reinterpret the bit pattern as s32 to recover the original negative value.
+  if (parsed >= 0 && parsed <= static_cast<s64>(std::numeric_limits<u32>::max())) {
+    return static_cast<s32>(static_cast<u32>(parsed));
+  }
+  throw error::Error("RPA value '{}' is out of range", value);
 }
 
 std::map<UnifiedFeatureCols, std::string> VariantInfoSerializer::SerializeVariantId(const VariantId& vid) {
@@ -93,6 +126,9 @@ std::map<UnifiedFeatureCols, std::string> VariantInfoSerializer::SerializeVarian
   result[kNonDuplex] = std::to_string(variant_info.nonduplex);
   result[kDuplex] = std::to_string(variant_info.duplex);
   result[kDuplexLowbq] = std::to_string(variant_info.duplex_lowbq);
+  result[kDuplexConcordant] = std::to_string(variant_info.duplex_concordant);
+  result[kDuplexSimplex] = std::to_string(variant_info.duplex_simplex);
+  result[kDuplexDiscordant] = std::to_string(variant_info.duplex_discordant);
   result[kSimplex] = std::to_string(variant_info.simplex);
   result[kDuplexAF] = std::to_string(variant_info.duplex_af);
   result[kPlusOnly] = std::to_string(variant_info.plusonly);
@@ -147,6 +183,9 @@ std::map<UnifiedFeatureCols, std::string> VariantInfoSerializer::SerializeRefere
   result[kRefDistanceSumSimplex] = std::to_string(ref_info.distance_sum_simplex);
   result[kRefDistanceMeanSimplex] = std::to_string(ref_info.distance_mean_simplex);
   result[kRefDuplexLowbq] = std::to_string(ref_info.duplex_lowbq);
+  result[kRefDuplexConcordant] = std::to_string(ref_info.duplex_concordant);
+  result[kRefDuplexSimplex] = std::to_string(ref_info.duplex_simplex);
+  result[kRefDuplexDiscordant] = std::to_string(ref_info.duplex_discordant);
   result[kRefSimplex] = std::to_string(ref_info.simplex);
   result[kRefDuplexAF] = std::to_string(ref_info.duplex_af);
   result[kDuplexDP] = std::to_string(ref_info.duplex_dp);
@@ -215,29 +254,31 @@ VariantId VariantInfoSerializer::DeserializeVariantId(const vec<FeatureColumn>& 
   return vid;
 }
 
-static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string& value, UnifiedVariantFeature& feat) {
+static bool UpdateVariantBamFeature(const FeatureColumn& col,  // NOSONAR
+                                    const std::string& value,
+                                    UnifiedVariantFeature& feat) {
   using enum UnifiedFeatureCols;
   switch (col.enum_val) {
     case kWeightedDepth:
       feat.weighted_depth = std::stod(value);
       break;
     case kSupport:
-      feat.support = std::stoul(value);
+      feat.support = util::ParseU64(value);
       break;
     case kMapqMax:
-      feat.mapq_max = static_cast<u8>(std::stoi(value));
+      feat.mapq_max = util::ParseU8(value);
       break;
     case kMapqMin:
-      feat.mapq_min = static_cast<u8>(std::stoi(value));
+      feat.mapq_min = util::ParseU8(value);
       break;
     case kMapqSum:
-      feat.mapq_sum = std::stoul(value);
+      feat.mapq_sum = util::ParseU64(value);
       break;
     case kMapqSumLowbq:
-      feat.mapq_sum_lowbq = std::stoul(value);
+      feat.mapq_sum_lowbq = util::ParseU64(value);
       break;
     case kMapqSumSimplex:
-      feat.mapq_sum_simplex = std::stoul(value);
+      feat.mapq_sum_simplex = util::ParseU64(value);
       break;
     case kMapqMean:
       feat.mapq_mean = std::stod(value);
@@ -249,16 +290,16 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
       feat.mapq_mean_simplex = std::stod(value);
       break;
     case kMapqLT60Count:
-      feat.mapq_lt60_count = std::stoul(value);
+      feat.mapq_lt60_count = util::ParseU64(value);
       break;
     case kMapqLT40Count:
-      feat.mapq_lt40_count = std::stoul(value);
+      feat.mapq_lt40_count = util::ParseU64(value);
       break;
     case kMapqLT30Count:
-      feat.mapq_lt30_count = std::stoul(value);
+      feat.mapq_lt30_count = util::ParseU64(value);
       break;
     case kMapqLT20Count:
-      feat.mapq_lt20_count = std::stoul(value);
+      feat.mapq_lt20_count = util::ParseU64(value);
       break;
     case kBaseqMin:
       feat.baseq_min = std::stod(value);
@@ -273,22 +314,22 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
       feat.baseq_mean = std::stod(value);
       break;
     case kBaseqLT20Count:
-      feat.baseq_lt20_count = std::stoul(value);
+      feat.baseq_lt20_count = util::ParseU64(value);
       break;
     case kDistanceMin:
-      feat.distance_min = std::stoul(value);
+      feat.distance_min = util::ParseU64(value);
       break;
     case kDistanceMax:
-      feat.distance_max = std::stoul(value);
+      feat.distance_max = util::ParseU64(value);
       break;
     case kDistanceSum:
-      feat.distance_sum = std::stoul(value);
+      feat.distance_sum = util::ParseU64(value);
       break;
     case kDistanceSumLowbq:
-      feat.distance_sum_lowbq = std::stoul(value);
+      feat.distance_sum_lowbq = util::ParseU64(value);
       break;
     case kDistanceSumSimplex:
-      feat.distance_sum_simplex = std::stoul(value);
+      feat.distance_sum_simplex = util::ParseU64(value);
       break;
     case kDistanceMean:
       feat.distance_mean = std::stod(value);
@@ -300,37 +341,46 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
       feat.distance_mean_simplex = std::stod(value);
       break;
     case kFamilysizeSum:
-      feat.familysize_sum = std::stoul(value);
+      feat.familysize_sum = util::ParseU64(value);
       break;
     case kFamilysizeMean:
       feat.familysize_mean = std::stod(value);
       break;
     case kFamilysizeLT3Count:
-      feat.familysize_lt3_count = std::stoul(value);
+      feat.familysize_lt3_count = util::ParseU64(value);
       break;
     case kFamilysizeLT5Count:
-      feat.familysize_lt5_count = std::stoul(value);
+      feat.familysize_lt5_count = util::ParseU64(value);
       break;
     case kNonDuplex:
-      feat.nonduplex = std::stoul(value);
+      feat.nonduplex = util::ParseU64(value);
       break;
     case kDuplex:
-      feat.duplex = std::stoul(value);
+      feat.duplex = util::ParseU64(value);
       break;
     case kDuplexLowbq:
       feat.duplex_lowbq = std::stod(value);
       break;
+    case kDuplexConcordant:
+      feat.duplex_concordant = util::ParseU32(value);
+      break;
+    case kDuplexSimplex:
+      feat.duplex_simplex = util::ParseU32(value);
+      break;
+    case kDuplexDiscordant:
+      feat.duplex_discordant = util::ParseU32(value);
+      break;
     case kSimplex:
-      feat.simplex = std::stoul(value);
+      feat.simplex = util::ParseU64(value);
       break;
     case kDuplexAF:
       feat.duplex_af = std::stod(value);
       break;
     case kPlusOnly:
-      feat.plusonly = std::stoul(value);
+      feat.plusonly = util::ParseU64(value);
       break;
     case kMinusOnly:
-      feat.minusonly = std::stoul(value);
+      feat.minusonly = util::ParseU64(value);
       break;
     case kWeightedScore:
       feat.weighted_score = std::stod(value);
@@ -342,7 +392,7 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
       feat.context = DotToEmptyString(value);
       break;
     case kContextIndex:
-      feat.context_index = std::stoul(value);
+      feat.context_index = util::ParseU64(value);
       break;
     case kMLScore:
       feat.ml_score = std::stod(value);
@@ -381,7 +431,7 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
       feat.tn_af_ratio = std::stod(value);
       break;
     case kSupportReverse:
-      feat.support_reverse = std::stoul(value);
+      feat.support_reverse = util::ParseU64(value);
       break;
     case kAlignmentBias:
       feat.alignmentbias = std::stod(value);
@@ -401,7 +451,7 @@ static bool UpdateVariantBamFeature(const FeatureColumn& col, const std::string&
   return true;
 }
 
-static bool UpdateReferenceBamFeature(const FeatureColumn& col,
+static bool UpdateReferenceBamFeature(const FeatureColumn& col,  // NOSONAR
                                       const std::string& value,
                                       UnifiedReferenceFeature& feat) {
   using enum UnifiedFeatureCols;
@@ -413,25 +463,25 @@ static bool UpdateReferenceBamFeature(const FeatureColumn& col,
       feat.nonhomopolymer_weighted_depth = std::stod(value);
       break;
     case kRefSupport:
-      feat.support = std::stoul(value);
+      feat.support = util::ParseU64(value);
       break;
     case kRefNonhomopolymerSupport:
-      feat.nonhomopolymer_support = std::stoul(value);
+      feat.nonhomopolymer_support = util::ParseU64(value);
       break;
     case kRefMapqMin:
-      feat.mapq_min = static_cast<u8>(std::stoul(value));
+      feat.mapq_min = util::ParseU8(value);
       break;
     case kRefMapqMax:
-      feat.mapq_max = static_cast<u8>(std::stoul(value));
+      feat.mapq_max = util::ParseU8(value);
       break;
     case kRefMapqSum:
-      feat.mapq_sum = std::stoul(value);
+      feat.mapq_sum = util::ParseU64(value);
       break;
     case kRefMapqSumLowbq:
-      feat.mapq_sum_lowbq = std::stoul(value);
+      feat.mapq_sum_lowbq = util::ParseU64(value);
       break;
     case kRefMapqSumSimplex:
-      feat.mapq_sum_simplex = std::stoul(value);
+      feat.mapq_sum_simplex = util::ParseU64(value);
       break;
     case kRefMapqMean:
       feat.mapq_mean = std::stod(value);
@@ -443,37 +493,37 @@ static bool UpdateReferenceBamFeature(const FeatureColumn& col,
       feat.mapq_mean_simplex = std::stod(value);
       break;
     case kRefMapqLT60Count:
-      feat.mapq_lt60_count = std::stoul(value);
+      feat.mapq_lt60_count = util::ParseU64(value);
       break;
     case kRefMapqLT40Count:
-      feat.mapq_lt40_count = std::stoul(value);
+      feat.mapq_lt40_count = util::ParseU64(value);
       break;
     case kRefMapqLT30Count:
-      feat.mapq_lt30_count = std::stoul(value);
+      feat.mapq_lt30_count = util::ParseU64(value);
       break;
     case kRefMapqLT20Count:
-      feat.mapq_lt20_count = std::stoul(value);
+      feat.mapq_lt20_count = util::ParseU64(value);
       break;
     case kRefBaseqSum:
-      feat.baseq_sum = std::stoul(value);
+      feat.baseq_sum = util::ParseU64(value);
       break;
     case kRefBaseqLT20Count:
-      feat.baseq_lt20_count = std::stoul(value);
+      feat.baseq_lt20_count = util::ParseU64(value);
       break;
     case kRefDistanceMin:
-      feat.distance_min = std::stoul(value);
+      feat.distance_min = util::ParseU64(value);
       break;
     case kRefDistanceMax:
-      feat.distance_max = std::stoul(value);
+      feat.distance_max = util::ParseU64(value);
       break;
     case kRefDistanceSum:
-      feat.distance_sum = std::stoul(value);
+      feat.distance_sum = util::ParseU64(value);
       break;
     case kRefDistanceSumLowbq:
-      feat.distance_sum_lowbq = std::stoul(value);
+      feat.distance_sum_lowbq = util::ParseU64(value);
       break;
     case kRefDistanceSumSimplex:
-      feat.distance_sum_simplex = std::stoul(value);
+      feat.distance_sum_simplex = util::ParseU64(value);
       break;
     case kRefDistanceMean:
       feat.distance_mean = std::stod(value);
@@ -487,8 +537,17 @@ static bool UpdateReferenceBamFeature(const FeatureColumn& col,
     case kRefDuplexLowbq:
       feat.duplex_lowbq = std::stod(value);
       break;
+    case kRefDuplexConcordant:
+      feat.duplex_concordant = util::ParseU32(value);
+      break;
+    case kRefDuplexSimplex:
+      feat.duplex_simplex = util::ParseU32(value);
+      break;
+    case kRefDuplexDiscordant:
+      feat.duplex_discordant = util::ParseU32(value);
+      break;
     case kRefSimplex:
-      feat.simplex = std::stoul(value);
+      feat.simplex = util::ParseU64(value);
       break;
     case kRefDuplexAF:
       feat.duplex_af = std::stod(value);
@@ -497,43 +556,43 @@ static bool UpdateReferenceBamFeature(const FeatureColumn& col,
       feat.duplex_dp = std::stod(value);
       break;
     case kRefFamilysizeSum:
-      feat.familysize_sum = std::stoul(value);
+      feat.familysize_sum = util::ParseU64(value);
       break;
     case kRefFamilysizeLT3Count:
-      feat.familysize_lt3_count = std::stoul(value);
+      feat.familysize_lt3_count = util::ParseU64(value);
       break;
     case kRefFamilysizeLT5Count:
-      feat.familysize_lt5_count = std::stoul(value);
+      feat.familysize_lt5_count = util::ParseU64(value);
       break;
     case kRefNonhomopolymerMapqMin:
-      feat.nonhomopolymer_mapq_min = static_cast<u8>(std::stoul(value));
+      feat.nonhomopolymer_mapq_min = util::ParseU8(value);
       break;
     case kRefNonhomopolymerMapqMax:
-      feat.nonhomopolymer_mapq_max = static_cast<u8>(std::stoul(value));
+      feat.nonhomopolymer_mapq_max = util::ParseU8(value);
       break;
     case kRefNonhomopolymerMapqSum:
-      feat.nonhomopolymer_mapq_sum = std::stoul(value);
+      feat.nonhomopolymer_mapq_sum = util::ParseU64(value);
       break;
     case kRefNonhomopolymerMapqLT60Count:
-      feat.nonhomopolymer_mapq_lt60_count = std::stoul(value);
+      feat.nonhomopolymer_mapq_lt60_count = util::ParseU64(value);
       break;
     case kRefNonhomopolymerMapqLT40Count:
-      feat.nonhomopolymer_mapq_lt40_count = std::stoul(value);
+      feat.nonhomopolymer_mapq_lt40_count = util::ParseU64(value);
       break;
     case kRefNonhomopolymerMapqLT30Count:
-      feat.nonhomopolymer_mapq_lt30_count = std::stoul(value);
+      feat.nonhomopolymer_mapq_lt30_count = util::ParseU64(value);
       break;
     case kRefNonhomopolymerMapqLT20Count:
-      feat.nonhomopolymer_mapq_lt20_count = std::stoul(value);
+      feat.nonhomopolymer_mapq_lt20_count = util::ParseU64(value);
       break;
     case kRefNonhomopolymerBaseqMin:
-      feat.nonhomopolymer_baseq_min = static_cast<u8>(std::stoul(value));
+      feat.nonhomopolymer_baseq_min = util::ParseU8(value);
       break;
     case kRefNonhomopolymerBaseqMax:
-      feat.nonhomopolymer_baseq_max = static_cast<u8>(std::stoul(value));
+      feat.nonhomopolymer_baseq_max = util::ParseU8(value);
       break;
     case kRefNonhomopolymerBaseqSum:
-      feat.nonhomopolymer_baseq_sum = std::stoul(value);
+      feat.nonhomopolymer_baseq_sum = util::ParseU64(value);
       break;
     case kRefBaseqMean:
       feat.baseq_mean = std::stod(value);
@@ -587,7 +646,7 @@ static bool UpdateReferenceBamFeature(const FeatureColumn& col,
       feat.bq_af = std::stod(value);
       break;
     case kNumAlt:
-      feat.num_alt = std::stoul(value);
+      feat.num_alt = util::ParseU64(value);
       break;
     default:
       return false;
@@ -716,7 +775,7 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.chrom = value;
         break;
       case kPos:
-        feat.pos = std::stoull(value) - 1;  // convert from 1-based to 0-based
+        feat.pos = util::ParseU64(value) - 1;  // convert from 1-based to 0-based
         break;
       case kRef:
         feat.ref = value;
@@ -734,19 +793,19 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.tlod = std::stof(value);
         break;
       case kVcfMpos:
-        feat.mpos = std::stoul(value);
+        feat.mpos = util::ParseU64(value);
         break;
       case kVcfMmqRef:
-        feat.mmq_ref = static_cast<u8>(std::stoul(value));
+        feat.mmq_ref = util::ParseU8(value);
         break;
       case kVcfMmqAlt:
-        feat.mmq_alt = static_cast<u8>(std::stoul(value));
+        feat.mmq_alt = util::ParseU8(value);
         break;
       case kVcfMbqRef:
-        feat.mbq_ref = static_cast<u8>(std::stoul(value));
+        feat.mbq_ref = util::ParseU8(value);
         break;
       case kVcfMbqAlt:
-        feat.mbq_alt = static_cast<u8>(std::stoul(value));
+        feat.mbq_alt = util::ParseU8(value);
         break;
       case kVcfPre2bContext:
         feat.pre_2bp_context = DotToEmptyString(value);
@@ -758,40 +817,40 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.post_30bp_context = DotToEmptyString(value);
         break;
       case kVcfUnique3mers:
-        feat.uniq_3mers = std::stoul(value);
+        feat.uniq_3mers = util::ParseU64(value);
         break;
       case kVcfUnique4mers:
-        feat.uniq_4mers = std::stoul(value);
+        feat.uniq_4mers = util::ParseU64(value);
         break;
       case kVcfUnique5mers:
-        feat.uniq_5mers = std::stoul(value);
+        feat.uniq_5mers = util::ParseU64(value);
         break;
       case kVcfUnique6mers:
-        feat.uniq_6mers = std::stoul(value);
+        feat.uniq_6mers = util::ParseU64(value);
         break;
       case kVcfHomopolymer:
-        feat.homopolymer = std::stoul(value);
+        feat.homopolymer = util::ParseU64(value);
         break;
       case kVcfDirepeat:
-        feat.direpeat = std::stoul(value);
+        feat.direpeat = util::ParseU64(value);
         break;
       case kVcfTrirepeat:
-        feat.trirepeat = std::stoul(value);
+        feat.trirepeat = util::ParseU64(value);
         break;
       case kVcfQuadrepeat:
-        feat.quadrepeat = std::stoul(value);
+        feat.quadrepeat = util::ParseU64(value);
         break;
       case kVcfVariantDensity:
-        feat.variant_density = std::stoul(value);
+        feat.variant_density = util::ParseU64(value);
         break;
       case kVcfRefAd:
-        feat.ref_ad = std::stoul(value);
+        feat.ref_ad = util::ParseU64(value);
         break;
       case kVcfAltAd:
-        feat.alt_ad = std::stoul(value);
+        feat.alt_ad = util::ParseU64(value);
         break;
       case kVcfAltAd2:
-        feat.alt_ad2 = std::stoul(value);
+        feat.alt_ad2 = util::ParseU64(value);
         break;
       case kVcfRefAdAf:
         feat.ref_ad_af = std::stod(value);
@@ -803,10 +862,10 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.alt_ad2_af = std::stod(value);
         break;
       case kVcfTumorAltAd:
-        feat.tumor_alt_ad = std::stoul(value);
+        feat.tumor_alt_ad = util::ParseU64(value);
         break;
       case kVcfNormalAltAd:
-        feat.normal_alt_ad = std::stoul(value);
+        feat.normal_alt_ad = util::ParseU64(value);
         break;
       case kVcfTumorAf:
         feat.tumor_af = std::stof(value);
@@ -818,10 +877,10 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.tn_af_ratio = std::stof(value);
         break;
       case kVcfTumorDp:
-        feat.tumor_dp = std::stoul(value);
+        feat.tumor_dp = util::ParseU64(value);
         break;
       case kVcfNormalDp:
-        feat.normal_dp = std::stoul(value);
+        feat.normal_dp = util::ParseU64(value);
         break;
       case kVcfPopAf:
         feat.popaf = std::stof(value);
@@ -833,10 +892,10 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.qual = std::stof(value);
         break;
       case kVcfGq:
-        feat.gq = std::stoul(value);
+        feat.gq = util::ParseU64(value);
         break;
       case kVcfHapcomp:
-        feat.hapcomp = std::stoul(value);
+        feat.hapcomp = util::ParseU64(value);
         break;
       case kVcfHapdom:
         feat.hapdom = std::stof(value);
@@ -845,16 +904,19 @@ VcfFeature VariantInfoSerializer::DeserializeVcfFeatureRow(const vec<FeatureColu
         feat.ru = DotToEmptyString(value);
         break;
       case kVcfRpaRef:
-        feat.rpa_ref = std::stoul(value);
+        feat.rpa_ref = ParseRpaValue(value);
         break;
       case kVcfRpaAlt:
-        feat.rpa_alt = std::stoul(value);
+        feat.rpa_alt = ParseRpaValue(value);
         break;
       case kVcfStr:
-        feat.str = (std::stoul(value) != 0u);
+        feat.str = (util::ParseU64(value) != 0u);
         break;
       case kVcfAtInterest:
-        feat.at_interest = (std::stoul(value) != 0u);
+        feat.at_interest = (util::ParseU64(value) != 0u);
+        break;
+      case kVcfGcContent:
+        feat.gc_content = std::stof(value);
         break;
       default:
         break;
@@ -913,6 +975,7 @@ std::map<UnifiedFeatureCols, std::string> VariantInfoSerializer::SerializeVcfFea
   result[kVcfRpaAlt] = std::to_string(feature.rpa_alt);
   result[kVcfStr] = feature.str ? "1" : "0";
   result[kVcfAtInterest] = feature.at_interest ? "1" : "0";
+  result[kVcfGcContent] = std::to_string(feature.gc_content);
   return result;
 }
 
@@ -920,7 +983,6 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
   using enum UnifiedFeatureCols;
   switch (col) {
     case kChrom:
-      // TODO: if possible, replace with htslib contig index
       return static_cast<f64>(std::hash<std::string>{}(vid.chrom));
     case kPos:
       return static_cast<f64>(vid.pos + 1);  // convert from 0-based to 1-based
@@ -939,7 +1001,8 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
   }
 }
 
-f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, const UnifiedVariantFeature& feat) {
+f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col,  // NOSONAR
+                                               const UnifiedVariantFeature& feat) {
   using enum UnifiedFeatureCols;
   switch (col) {
     case kWeightedDepth:
@@ -1008,6 +1071,12 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
       return feat.distance_mean_simplex;
     case kDuplexLowbq:
       return feat.duplex_lowbq;
+    case kDuplexConcordant:
+      return feat.duplex_concordant;
+    case kDuplexSimplex:
+      return feat.duplex_simplex;
+    case kDuplexDiscordant:
+      return feat.duplex_discordant;
     case kSimplex:
       return feat.simplex;
     case kDuplexAF:
@@ -1069,7 +1138,6 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
   using enum UnifiedFeatureCols;
   switch (col) {
     case kChrom:
-      // TODO: if possible, replace with htslib contig index
       return static_cast<f64>(std::hash<std::string>{}(feat.chrom));
     case kPos:
       return static_cast<f64>(feat.pos + 1);  // convert from 0-based to 1-based
@@ -1171,12 +1239,15 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
       return feat.rpa_alt;
     case kVcfAtInterest:
       return feat.at_interest ? 1 : 0;
+    case kVcfGcContent:
+      return feat.gc_content;
     default:
       return NAN;  // not an attribute of VcfFeature
   }
 }
 
-f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, const UnifiedReferenceFeature& feat) {
+f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col,  // NOSONAR
+                                               const UnifiedReferenceFeature& feat) {
   using enum UnifiedFeatureCols;
   switch (col) {
     case kRefSupport:
@@ -1237,6 +1308,12 @@ f64 VariantInfoSerializer::NumericalizeFeature(const UnifiedFeatureCols col, con
       return feat.distance_mean_simplex;
     case kRefDuplexLowbq:
       return feat.duplex_lowbq;
+    case kRefDuplexConcordant:
+      return feat.duplex_concordant;
+    case kRefDuplexSimplex:
+      return feat.duplex_simplex;
+    case kRefDuplexDiscordant:
+      return feat.duplex_discordant;
     case kRefSimplex:
       return feat.simplex;
     case kRefDuplexAF:

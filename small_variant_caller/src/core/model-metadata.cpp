@@ -121,7 +121,7 @@ void VerifyModelCompatibility(const fs::path& model_path, const vec<FeatureColum
   if (!fs::exists(model_path)) {
     throw error::Error("Model file '{}' does not exist.", model_path);
   }
-  const ScoreCalculator cal(model_path, scoring_cols.size(), "");
+  const ScoreCalculator cal(model_path, scoring_cols.size(), "", false);
   VerifyModelFeatureNames(cal, scoring_cols);
 }
 

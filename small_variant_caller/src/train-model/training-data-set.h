@@ -3,6 +3,7 @@
 #include <map>
 #include <string>
 
+#include <xoos/io/metadata-util.h>
 #include <xoos/types/float.h>
 #include <xoos/types/int.h>
 #include <xoos/types/vec.h>
@@ -100,9 +101,14 @@ struct TrainingDataSet {
    * @param feature_names The names of the features corresponding to each column in the data matrix
    * @param germline_genotype Flag indicating whether to convert numeric labels to genotype strings for germline
    * workflows.
+   * @param command_line Command-line provenance information written as a metadata header line before the column
+   * headers.
    * @throws error::Error if the size of the feature names does not match the expected feature vector size
    */
-  void WriteData(LockedTsvWriter& writer, const vec<std::string>& feature_names, bool germline_genotype) const;
+  void WriteData(LockedTsvWriter& writer,
+                 const vec<std::string>& feature_names,
+                 bool germline_genotype,
+                 const io::CommandLineInfo& command_line) const;
 
   /**
    * @brief Clear all training data from the dataset. This is used to reset the dataset before re-using it for training

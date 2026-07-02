@@ -1,0 +1,21 @@
+graph TB
+    subgraph "Pipeline profiles (xoos-nf-core)"
+        Analysis["Analysis profile<br/>(e.g., germline_wgs_duplex)"]
+        Container["Container profile<br/>(e.g., docker)"]
+        Utility["Utility profile<br/>(e.g., gpu)"]
+    end
+
+    subgraph "Environment profiles (pipeline_launcher)"
+        EnvProfile["Env profile<br/>(e.g., docker_gpu_schedule)"]
+    end
+
+    subgraph "Merged -profile argument"
+        Merged["-profile env_profile,<br/>analysis_profile,<br/>container_profile,<br/>utility_profile"]
+    end
+
+    EnvProfile --> Merged
+    Analysis --> Merged
+    Container --> Merged
+    Utility --> Merged
+
+    Merged --> NF["Nextflow applies<br/>profiles in order"]

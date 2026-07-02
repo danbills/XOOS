@@ -36,10 +36,10 @@ vec<std::string> QscoreStats::GetHeaders() const {
   return {"q_score", "total_bases", "mismatches", "empirical_phred_score"};
 }
 
-void QscoreStats::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void QscoreStats::WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const {
   std::ofstream ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(ofstream);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(ofstream, command_line_info);
   writer << GetHeaders();
   for (size_t qscore = 0; qscore < mismatches_by_qscore.size(); ++qscore) {
     if (mismatches_by_qscore[qscore].total_bases == 0) {

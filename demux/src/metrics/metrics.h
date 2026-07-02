@@ -14,6 +14,7 @@ constexpr auto kAssignedReads = "assigned_reads";
 constexpr auto kPassingReads = "passing_reads";
 constexpr auto kFailedAssignedReads = "failed_assigned_reads";
 constexpr auto kTooShortTrimmedReads = "too_short_trimmed_reads";
+constexpr auto kSidDiscordantDiscardedReads = "sid_discordant_discarded_reads";
 constexpr auto kTooShortReads = "too_short_reads";
 constexpr auto kTooManyErrorsReads = "too_many_errors_reads";
 constexpr auto kUnassignedReads = "unassigned_reads";

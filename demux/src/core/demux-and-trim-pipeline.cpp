@@ -2,59 +2,12 @@
 
 #include <xoos/log/logging.h>
 
-#include <algorithm>
-#include <utility>
-
-#include "io/sample-sheet/sample-sheet.h"
 #include "metrics/metric-filenames.h"
 #include "task/flow-manager.h"
 
 namespace xoos::demux {
 
 namespace fs = std::filesystem;
-
-// TODO: remove this namespace
-namespace detail {
-
-SidPool LoadSampleSheet(const BarcodePool& sid_pool, const fs::path& samplesheet) {
-  auto result = std::unordered_map<uint, Barcode>{};
-  auto sid2sample_name = Read(samplesheet);
-
-  for (const auto& sid : sid2sample_name) {
-    auto target_sequence = sid.first;
-    auto it = std::find_if(sid_pool.begin(), sid_pool.end(),
-                           [&target_sequence](const Barcode& barcode) { return barcode.sequence == target_sequence; });
-
-    if (it != sid_pool.end()) {
-      auto barcode = Barcode{it->id, it->sequence, sid.second};
-      result.emplace(it->id, barcode);
-    } else {
-      Logging::Warn("Unknown sample index '{}' specified for sample '{}'", sid.first, sid.second);
-    }
-  }
-  return result;
-}
-
-BarcodePool LoadSampleSheet(const fs::path& samplesheet) {
-  auto result = BarcodePool{};
-  auto sid2sample_name = Read(samplesheet);
-
-  uint id = 0;
-  for (const auto& [sequence, name] : sid2sample_name) {
-    auto barcode = Barcode{id++, sequence, name};
-    result.emplace_back(barcode);
-  }
-  return result;
-}
-
-SidPool LoadSidPool(const BarcodePool& sid_pool) {
-  auto result = std::unordered_map<uint, Barcode>{};
-  std::transform(std::begin(sid_pool), std::end(sid_pool), std::inserter(result, std::end(result)),
-                 [](const Barcode& sid) { return std::make_pair(sid.id, sid); });
-  return result;
-}
-
-}  // namespace detail
 
 /**
  * Check metrics validation and delete any existing metrics files if overwrite is enabled. If overwrite is not enabled

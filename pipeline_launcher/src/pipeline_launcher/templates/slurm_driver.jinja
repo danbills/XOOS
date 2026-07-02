@@ -1,0 +1,42 @@
+#!/bin/bash
+{% for flag, value in data.sbatchDirectives -%}
+#SBATCH {{ flag }}={{ value }}
+{% endfor -%}
+#SBATCH --output=%x.%j.out.txt
+#SBATCH --error=%x.%j.err.txt
+#SBATCH --ntasks=2
+#SBATCH --nodes=1
+#SBATCH --mem=8g
+#SBATCH --signal=B:TERM@60
+
+set -eu -o pipefail
+
+{{ data.preamble }}
+
+# Forward TERM/INT to the child so cancellation avoids leaving
+# orphaned Nextflow processes behind.
+child_pid=""
+
+handle_sigterm() {
+    echo '[driver] Caught termination signal, forwarding to Nextflow (PID: '"${child_pid:-}"')...'
+    [[ -n "${child_pid:-}" ]] && kill -INT "$child_pid" 2>/dev/null || true
+    echo '[driver] Waiting for Nextflow to terminate...'
+    [[ -n "${child_pid:-}" ]] && wait "$child_pid" 2>/dev/null || true
+    echo '[driver] Nextflow terminated, exiting.'
+    # EXIT trap fires after this, running cleanup().
+    exit 143
+}
+
+trap handle_sigterm SIGTERM SIGINT
+
+export PYTHONUNBUFFERED=1
+export NXF_OPTS="-Xms512m -Xmx2g"
+export NXF_ANSI_LOG=false
+export COLUMNS=120
+{% if data.launcherCwd %}export NXF_FILE_ROOT={{ data.launcherCwd }}{% endif %}
+
+echo "[driver] Output directory: {{ data.outDir }}"
+{{ data.command }} &
+child_pid="$!"
+
+wait "$child_pid"

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <xoos/types/int.h>
+
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "sequence/alignment/log-likelihood-scoring.h"
 #include "sequence/loci-range.h"
 
 namespace xoos::demux {
@@ -14,36 +17,49 @@ enum class MatchType {
   kInExact,
 };
 
-// KZ2024 - to minimize memory usage, we'd like to limit the amount of memory used by this structure to 16 bits.
+// To minimize memory usage, we'd like to limit the amount of memory used by this structure to 16 bits.
 // This would then allow us to put all the barcode matches in a very large 8 GB (2^32) lookup table.
-constexpr static uint kUninitialized{3};
+constexpr static u16 kUninitialized{3};
 
 struct BarcodeMatch {
-  enum BarcodeType { kSID5p = 0, kUMI5p, kSpacer5p, kRunway5p, kSID3p, kUMI3p, kSpacer3p };
+  BarcodeMatch() : barcode_id(0), edist(kUninitialized) {}
 
-  BarcodeMatch() : barcode_id(0), edist(kUninitialized), barcode_type(0) {}
+  BarcodeMatch(const u16 id, const u16 dist) : barcode_id(id), edist(dist) {}
 
-  BarcodeMatch(uint id, uint dist, uint type) : barcode_id(id), edist(dist), barcode_type(type) {}
-
-  BarcodeMatch(uint id, uint dist) : barcode_id(id), edist(dist), barcode_type(0) {}
-
-  uint16_t barcode_id : 11;   // Max 2048 IDs
-  uint16_t edist : 2;         // 0..2, the value 3 indicates uninitialized
-  uint16_t barcode_type : 3;  // future extension for umi3p, umi5p, sid3p, sid5p, ... (up to 8 types)
+  // Max 2048 IDs
+  u16 barcode_id : 11;
+  // 0..2, the value 3 indicates uninitialized
+  u16 edist : 2;
 };
 
+static_assert(sizeof(BarcodeMatch) == 2, "BarcodeMatch must be exactly 16 bits");
+
+/**
+ * @brief A named sequence component within an adapter design.
+ *
+ * In this codebase "barcode" is used broadly to mean any recognizable short
+ * sub-sequence that the LUT matches against — SIDs, UMIs, spacers, runways,
+ * stems, etc. (see BarcodeType). The struct simply pairs an ordinal ID with
+ * the raw nucleotide sequence and a human-readable name.
+ *
+ * TODO: Another name for this might make more sense as "adapter component".
+ */
 struct Barcode {
-  uint id;
+  u32 id;
   std::string sequence;
   std::string name;
 
   Barcode();
-  Barcode(uint id, std::string sequence, std::string name);
+  Barcode(u32 id, std::string sequence, std::string name);
 
   auto operator<=>(const Barcode&) const = default;
 };
 
+/// @brief Generic collection of adapter-component sequences used by the LUT/matcher layer (SIDs, UMIs, spacers, etc.).
 using BarcodePool = std::vector<Barcode>;
+
+/// @brief Domain alias marking a BarcodePool that specifically holds sample-identifying barcodes for demux and metrics.
+using SidPool = BarcodePool;
 
 /**
  * @class MatchInfo
@@ -64,7 +80,9 @@ class MatchInfo {
    * @param match_info The MatchInfo instance to retrieve the barcode ID from.
    * @return An optional containing the barcode ID if available, otherwise an empty optional.
    */
-  static std::optional<uint> BarcodeId(const std::optional<MatchInfo>& match_info);
+  static std::optional<u32> BarcodeId(const std::optional<MatchInfo>& match_info);
+
+  u32 BarcodeId() const { return _match.barcode_id; }
 
   /**
    * @brief Static method to retrieve the edit distance from a MatchInfo instance.
@@ -75,7 +93,9 @@ class MatchInfo {
    * @param match_info The MatchInfo instance to retrieve the edit distance from.
    * @return An optional containing the edit distance if available, otherwise an empty optional.
    */
-  static std::optional<uint> EDist(const std::optional<MatchInfo>& match_info);
+  static std::optional<u32> EDist(const std::optional<MatchInfo>& match_info);
+
+  u32 EDist() const { return _match.edist; }
 
   /**
    * @brief Static method to retrieve the position from a MatchInfo instance.
@@ -88,7 +108,6 @@ class MatchInfo {
    */
   static std::optional<LociRange> Position(const std::optional<MatchInfo>& match_info);
 
- public:
   /**
    * @brief Constructs a MatchInfo instance with provided match information.
    *
@@ -119,17 +138,13 @@ class MatchInfo {
    * @param spos The start position of the new matches.
    * @param epos The end position of the new matches.
    */
-  void Update(const BarcodeMatch& new_match, MatchType new_match_type, uint spos, uint epos);
+  void Update(const BarcodeMatch& new_match, MatchType new_match_type, u32 spos, u32 epos);
 
-  uint SPos() const { return _position.spos; }
+  u32 SPos() const { return _position.spos; }
 
-  uint EPos() const { return _position.epos; }
+  u32 EPos() const { return _position.epos; }
 
-  uint Length() const { return _position.Length(); }
-
-  uint EDist() const { return _match.edist; }
-
-  uint BarcodeId() const { return _match.barcode_id; }
+  u32 Length() const { return _position.Length(); }
 
   bool IsUnknown() const { return _match_type == MatchType::kUnknown; }
 
@@ -140,6 +155,35 @@ class MatchInfo {
   bool HasMatches() const { return _match.edist != kUninitialized; }
 
   const LociRange& Position() const { return _position; }
+
+  /**
+   * @brief Compute a log-likelihood alignment score from the LUT match metadata.
+   *
+   * Uses the observed match window length (Length()) and edit distance (EDist()) to decompose
+   * the alignment into insertions, deletions, substitutions, and matches. The net indel count is
+   * computed as Length() - gt_len: a positive value represents insertions and a negative value
+   * represents deletions. After accounting for the absolute net indel count, the remaining edits
+   * are treated as substitutions, and the remaining ground-truth positions are treated as matches.
+   * The final score is then computed by applying the scoring constants from the scoring namespace.
+   *
+   * @param gt_len Ground-truth barcode length (e.g. from BarcodePool[BarcodeId()].sequence.size())
+   * @return Log-likelihood alignment score
+   */
+  s32 LogLikelihoodScore(const s32 gt_len) const {
+    // positive = net insertions, negative = net deletions
+    const s32 net_indels = static_cast<s32>(Length()) - gt_len;
+    const s32 abs_net = net_indels < 0 ? -net_indels : net_indels;
+
+    const s32 num_insertions = net_indels > 0 ? net_indels : 0;
+    const s32 num_deletions = net_indels < 0 ? -net_indels : 0;
+    // Remaining edits after accounting for length-changing operations must be substitutions.
+    const s32 num_substitutions = static_cast<s32>(EDist()) - abs_net;
+    // Matched bases = reference positions that were neither substituted nor deleted.
+    const s32 num_matches = gt_len - num_substitutions - num_deletions;
+
+    return num_matches * scoring::kMatch + num_substitutions * scoring::kSubstitution +
+           num_insertions * scoring::kInsertion + num_deletions * scoring::kDeletion;
+  }
 
  private:
   BarcodeMatch _match;

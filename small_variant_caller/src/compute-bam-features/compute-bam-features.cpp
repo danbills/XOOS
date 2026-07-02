@@ -21,7 +21,7 @@
 
 namespace xoos::svc {
 
-u32 ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params) {
+u64 ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params) {
   return ComputeBamFeatures().ParallelComputeBamFeatures(cli_params);
 }
 
@@ -75,7 +75,7 @@ StrMap<RefRegion> ComputeBamFeatures::GetAllRefRegions(const vec<fs::path>& bam_
   return result;
 }
 
-u32 ComputeBamFeatures::ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params) {
+u64 ComputeBamFeatures::ParallelComputeBamFeatures(const ComputeBamFeaturesCliParams& cli_params) {
   // This is the top-level method for computing bam features. All calls to compute bam features, whether from the
   // compute-bam-features executable or from filter-variants go through here.
 
@@ -119,7 +119,7 @@ u32 ComputeBamFeatures::ParallelComputeBamFeatures(const ComputeBamFeaturesCliPa
                                                cli_params.tumor_sample_name),
       .decode_yc = cli_params.decode_yc,
       .min_base_type = cli_params.min_base_type,
-  };
+      .duplex_lowbq = cli_params.duplex_lowbq};
 
   SetupWorkersAndAlignmentReaders(cli_params, params);
 
@@ -167,11 +167,7 @@ void ComputeBamFeatures::SetupWorkersAndAlignmentReaders(const ComputeBamFeature
     _writer = std::make_unique<LockedTsvWriter>(*cli_params.output_file);
 
     if (cli_params.command_line.has_value()) {
-      // write version and command line as comment lines
-      io::Comments cmt;
-      const auto& cmd_info = cli_params.command_line.value();
-      io::AddVersionAndCommandLineComment(cmt, cmd_info.version, cmd_info.command_line);
-      _writer->AppendComments(cmt);
+      _writer->AppendMetadata(cli_params.command_line.value());
     }
     // write header row
     _writer->AppendRow(cli_params.config.bam_feature_names);
@@ -276,7 +272,6 @@ void ComputeBamFeatures::GetGenomicRegionsForChromosome(const StrMap<RefRegion>&
       regions_queue.emplace_back(chrom, start, end, prev_interval);
       prev_interval = Interval{start, end};
     }
-    // TODO: add dynamic partitioning that breaks up dense/high coverage regions
   }
 }
 

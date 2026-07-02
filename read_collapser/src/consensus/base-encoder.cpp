@@ -1,5 +1,7 @@
 #include "consensus/base-encoder.h"
 
+#include <xoos/log/logging.h>
+
 namespace xoos::read_collapser {
 
 BaseIndex ToIndex(const char base) {
@@ -14,9 +16,17 @@ BaseIndex ToIndex(const char base) {
     case kBaseT:
       return kIndexT;
     case kBaseGap:
-    default:
-      // Return kGap for invalid base
       return kIndexGap;
+    // N and P are valid consensus matrix symbols but callers (majority-voting.cpp)
+    // filter them out before calling ToIndex. Mapped here for contract completeness.
+    case kBaseN:
+      return kIndexN;
+    case kBaseP:
+      return kIndexP;
+    default: {
+      XOOS_LOG_WARN_ONCE("ToIndex: unexpected base character '{}'", base);
+      return kIndexGap;
+    }
   }
 }
 
@@ -36,9 +46,17 @@ char ToBase(const BaseIndex index) {
     case kIndexT:
       return kBaseT;
     case kIndexGap:
-    default:
-      // Return kBaseGap for invalid index
       return kBaseGap;
+    // N and P are valid consensus matrix symbols but callers (majority-voting.cpp)
+    // filter them out before calling ToBase. Mapped here for contract completeness.
+    case kIndexN:
+      return kBaseN;
+    case kIndexP:
+      return kBaseP;
+    default: {
+      XOOS_LOG_WARN_ONCE("ToBase: unexpected BaseIndex value {}", static_cast<size_t>(index));
+      return kBaseGap;
+    }
   }
 }
 

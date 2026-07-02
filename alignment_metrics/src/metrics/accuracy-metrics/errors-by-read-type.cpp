@@ -17,10 +17,10 @@ std::vector<std::string> ErrorsByReadType::GetHeaders() {
   return {kNameType, kNameCount, kNameDenominator, kNamePercentage};
 }
 
-void ErrorsByReadType::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void ErrorsByReadType::WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const {
   std::ofstream ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(ofstream);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(ofstream, command_line_info);
   writer << GetHeaders();
   writer << std::make_tuple(kNameSubstitutionsTotal, substitutions_total, kNotApplicable, kNotApplicable);
   if (dataset_metadata.has_read_type_info) {

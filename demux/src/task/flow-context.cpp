@@ -1,15 +1,15 @@
 #include "task/flow-context.h"
 
 #include <fmt/format.h>
+#include <xoos/error/error.h>
 #include <xoos/log/logging.h>
 
-#include <algorithm>
 #include <utility>
 
 #include "task/flow-manager.h"
 
 namespace xoos::demux {
-FlowContext::FlowContext(const FlowManager& mgr, const fs::path& input_file)
+FlowContext::FlowContext(const FlowManager& mgr, const fs::path& input_file, size_t input_index)
     // max_active_batches is the number of batches that are processed in parallel; with more batches, the scheduler
     // can optimize the task graph better at the cost of memory consumption.
     : _manager(mgr),
@@ -24,33 +24,50 @@ FlowContext::FlowContext(const FlowManager& mgr, const fs::path& input_file)
     _batch_data.emplace_back(std::make_unique<FixedReadRecordBatch>(_manager.param.batch_size));
   }
 
-  // Allocate a potential write buffer for every valid SID. Assume the minimum valid SID ID is 1, add an extra
-  // buffer at position 0 for unmapped reads.
-  uint max_id{0};
-  for (const auto& [sid_id, sid] : mgr.sid_pool) {
-    max_id = std::max(max_id, sid_id);
+  // Allocate a sink buffer for every SID plus one extra at index 0 for unassigned/failed reads.
+  // SID IDs are 0-based; sink index is sid.id + 1.
+  // In kAllSplit mode, an additional set of sinks is created for partial reads at offset sid_pool.size().
+  if (mgr.sid_pool.empty()) [[unlikely]] {
+    throw error::Error("sid_pool must contain at least one SID");
   }
+  const bool split_mode = _param.read_length_mode == ReadLengthMode::kAllSplit;
+  const auto sinks_per_category = mgr.sid_pool.size();
+  _sinks.resize(1 + sinks_per_category + (split_mode ? sinks_per_category : 0));
+  // use full path for input name to prevent collisions
+  const auto input_filename = input_file.string();
 
-  // 0 is reserved for unknown SIDs
-  _sinks.resize(max_id + 2);
-  for (const auto& [sid_id, sid] : mgr.sid_pool) {
-    // Create an output sink for every valid SID. Note that the SID ID is 1-based.
-    // To create a unique output filename, take the stem of the input file (so we have a hunch which input file was
-    // used + a hash value of the input file to make sure that the output files are unique.
-    // To limit string lengths, we limit the hash value length.
-    std::string prefix = fmt::format("{}.{}_{}", sid.name, input_file.stem().string(),
-                                     (std::hash<std::string>{}(input_file.string())) % 100000000UL);
+  for (const auto& sid : mgr.sid_pool) {
+    // The prefix includes the input file's index in the sorted input list to guarantee unique temporary filenames
+    // across input files (even when multiple files share the same stem, e.g., files in different directories).
+    // These temporary names are replaced with Everest-format names (<sample_name>-<part_index>) during the
+    // post-processing rename step.
+    std::string prefix = fmt::format("{}.{}_{}", sid.name, input_file.stem().string(), input_index);
+    // Track the mapping from output file prefix to input file path for post-processing rename and provenance.
+    mgr.RegisterOutputPrefix(prefix, input_filename);
 
-    _sinks[sid_id + 1] =
-        std::make_unique<Sink>(_manager, _param.compression_type, _param.out_dir, prefix, sid.name, sid_id + 1,
+    // In split mode, the normal sink index holds full reads under <sample>/full/.
+    // In non-split modes, the sink writes directly to <sample>/.
+    const auto sample_dir = split_mode ? fmt::format("{}/{}", sid.name, kFullReadSubdir) : sid.name;
+    _sinks[sid.id + 1] =
+        std::make_unique<Sink>(_manager, _param.compression_type, _param.out_dir, prefix, sample_dir, sid.id + 1,
                                _param.compression_level, _param.writing_threads_per_sample);
+
+    if (split_mode) {
+      // Partial-read sinks at offset sinks_per_category, writing to <sample>/partial/.
+      const auto partial_sample_dir = fmt::format("{}/{}", sid.name, kPartialReadSubdir);
+      const auto partial_sink_index = sid.id + 1 + sinks_per_category;
+      _sinks[partial_sink_index] =
+          std::make_unique<Sink>(_manager, _param.compression_type, _param.out_dir, prefix, partial_sample_dir,
+                                 partial_sink_index, _param.compression_level, _param.writing_threads_per_sample);
+    }
   }
 
   // Dummy sink for all failed reads (for any reason).
-  std::string prefix = fmt::format("raw_failed.{}_{}", input_file.stem().string(),
-                                   std::hash<std::string>{}(input_file.string()) % 100000000UL);
-  _sinks[0] = std::make_unique<Sink>(_manager, _param.compression_type, _param.out_dir, prefix, "raw_failed", 0,
-                                     _param.compression_level, _param.writing_threads_per_sample);
+  std::string prefix = fmt::format("{}.{}_{}", kReservedRawFailedName, input_file.stem().string(), input_index);
+  // Track the mapping from output file prefix to input file path for post-processing rename and provenance.
+  mgr.RegisterOutputPrefix(prefix, input_filename);
+  _sinks[0] = std::make_unique<Sink>(_manager, _param.compression_type, _param.out_dir, prefix, kReservedRawFailedName,
+                                     0, _param.compression_level, _param.writing_threads_per_sample);
 
   try {
     _reader = OpenSequenceFile(input_file);
@@ -68,7 +85,27 @@ tf::AsyncTask FlowContext::CreateWriteTask(const SinkData& data) const {
   return _sinks[data.sid_id]->CreateWriteTask(data);
 }
 
-void SinkData::operator()() const { flow_context->WriteData(*this); }
+void SinkData::operator()() const {
+  try {
+    flow_context->WriteData(*this);
+  } catch (const std::exception& e) {  // intentionally generic to prevent stall on any write failure
+    // only log the first exception to avoid spamming the logs
+    if (!Task::HasException()) [[unlikely]] {  // NOLINT(readability/braces)
+      Logging::Error("Write task failed for SID {}: {}", sid_id, e.what());
+      Task::SetTaskException(std::current_exception());
+    }
+    // Increment so the FlowContext destructor spin-wait can terminate.
+    // Without this, _nr_writes_completed never reaches nr_writes_scheduled
+    // and the destructor loops forever.
+    flow_context->IncrementWritesCompleted();
+  } catch (...) {  // catch all to prevent stall on any write failure, even non-standard exceptions
+    if (!Task::HasException()) [[unlikely]] {  // NOLINT(readability/braces)
+      Logging::Error("Write task failed for SID {}: unknown exception", sid_id);
+      Task::SetTaskException(std::current_exception());
+    }
+    flow_context->IncrementWritesCompleted();
+  }
+}
 
 void FlowContext::WriteData(const SinkData& data) {
   auto& sink = _sinks[data.sid_id];

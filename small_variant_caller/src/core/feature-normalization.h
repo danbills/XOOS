@@ -1,6 +1,5 @@
 #pragma once
 
-#include <xoos/types/fs.h>
 #include <xoos/types/str-container.h>
 
 #include "variant-info.h"
@@ -33,6 +32,8 @@ struct DepthTuple {
   u32 total;
 };
 
+const DepthTuple kZeroDepthTuple{};
+
 /**
  * @brief Struct to hold chromosome-level median depth for tumor and normal samples.
  * @details The struct contains two maps:
@@ -62,15 +63,6 @@ struct ChromMedianDepth {
  * @return Struct containing maps of chromosome to median depth
  */
 ChromMedianDepth GetChromosomeMedianDepth(const VarIdToVcfFeatures& vcf_features);
-
-/**
- * @brief Extract chromosome-level median depth from a VCF file.
- * @post For single-sample VCFs, depth values are extracted from the only sample as the normal sample.
- * @post For tumor-normal VCFs, depth values are extracted from both tumor and normal samples.
- * @param vcf_path Path of input VCF file
- * @return Struct containing maps of chromosome to median depth
- */
-ChromMedianDepth GetChromosomeMedianDepth(const fs::path& vcf_path);
 
 /**
  * @brief Get the sum of chromosome-level median depth values across all chromosomes.

@@ -31,6 +31,7 @@ class Trim5pYs {
   SeqMatcher _runway_5p_matcher;
   SeqMatcher _sid_5p_matcher;
   SeqMatcher _sid_spacer_5p_matcher;
+  std::string _flank_5p_sequence;
   // Bitap matcher for 5' flank sequence with up to 4 edit distance
   const Bitap<4> _flank_5p_bitap;
 };

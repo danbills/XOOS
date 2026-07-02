@@ -5,11 +5,12 @@
             <!-- This is the git commit id of the original repository that was forked. -->
             <version>d02c31d114e85a0cb5ccba09a981a0a06481f24e</version>
             <hashes>
-                <!--  At a minimum, the SHA-1 sum has must be provided for the file or
-                                    directory tree named by the "capt:sidecar-relativepath" property below, to
-                                    ensure integriry. This can be computed with sha1sum on the command line.  -->
-                <!-- command: find . -type f -not -name "bom.xml" \( -exec sha1sum "$PWD"/{} \; \) | awk '{print $1}' | sort | sha1sum -->
-                <hash alg="SHA-1">1702992284e32847d9b7dc01d39af132be655bb4</hash>
+                <!-- Hash computed over the sidecar-relativepath directory tree (excluding sidecar-sbom.xml).
+                     Command (run from vendor/recipes/xoos-lightgbm/):
+                     find . -type f -not -name "sidecar-sbom.xml" | sort \
+                       | xargs sha1sum | awk '{ print toupper($1), $2 }' \
+                       | sha1sum | awk '{ print toupper($1)}' -->
+                <hash alg="SHA-1">D96005BC69F920E57C281DC8AF6D3D614878A11A</hash>
             </hashes>
             <licenses>
                 <!--  List all the licenses that apply to our fork. This means all licenses

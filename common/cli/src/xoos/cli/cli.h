@@ -8,6 +8,8 @@
 
 #include <CLI/CLI.hpp>
 
+#include <xoos/io/metadata-util.h>
+
 namespace xoos::cli {
 using AppPtr = CLI::App*;
 using ConstAppPtr = const CLI::App*;
@@ -17,6 +19,14 @@ std::string RenderCli(ConstAppPtr app, const std::string& program_name);
 std::string RenderFullCli(ConstAppPtr app);
 
 std::string FullProgramName(const std::string& program_name, const std::string& version);
+
+/**
+ * @brief Extract program name, version, and rendered command line from a CLI app.
+ *
+ * Traverses to the root app for name/version. Renders the full command line
+ * including parent options (via RenderFullCli) and any active subcommands.
+ */
+io::CommandLineInfo GetCommandLineInfo(ConstAppPtr app);  // NOSONAR — used by downstream modules
 
 // Setup a default CLI application with standard options and version information.
 // The comments_callback, if provided, can be called with the version and CLI arguments.
@@ -94,7 +104,8 @@ AppPtr AddSubcommand(AppPtr app,
   define_sub_command_options(subcommand, cli_opts);
   subcommand->callback([subcommand, subcommand_main, cli_opts, pre_callback] {
     if (pre_callback) {
-      pre_callback(subcommand, cli_opts);  // Execute pre_call_back if provided
+      // Execute pre_callback if provided
+      pre_callback(subcommand, cli_opts);
     }
     subcommand_main(*cli_opts);
   });

@@ -13,3 +13,18 @@ target_link_xoos_libraries(read_collapser
         enum
         log
 )
+
+add_default_executable(read_collapser_rescue_secondary
+        read-collapser-rescue-secondary.cpp
+)
+target_link_libraries(read_collapser_rescue_secondary
+        PRIVATE
+        read_collapser_rescue_secondary_core
+)
+target_link_xoos_libraries(read_collapser_rescue_secondary
+        PRIVATE
+        cli
+        io
+        log
+        util
+)

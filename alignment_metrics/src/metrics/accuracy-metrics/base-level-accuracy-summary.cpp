@@ -22,7 +22,8 @@ std::vector<std::string> BaseLevelAccuracySummary::GetHeaders() {
   return {kNameType, kNameCount, kNameDenominator, kNamePhred, kNamePercentage};
 }
 
-void BaseLevelAccuracySummary::WriteTsv(const fs::path& output_path, const io::Comments& comments) const {
+void BaseLevelAccuracySummary::WriteTsv(const fs::path& output_path,
+                                        const io::CommandLineInfo& command_line_info) const {
   // The output of base-level-accuracy-summary is a tsv file with the following columns:
   // - Error type
   // - Count of errors of this type
@@ -41,7 +42,7 @@ void BaseLevelAccuracySummary::WriteTsv(const fs::path& output_path, const io::C
 
   std::ofstream ofstream(output_path);
   auto writer = csv::make_tsv_writer_buffered(ofstream);
-  io::WriteTsvComments(writer, comments);
+  io::WriteTsvMetadata(ofstream, command_line_info);
   writer << GetHeaders();
   writer << std::make_tuple(kNameTotalAlignedBases, total_bases, kNotApplicable, kNotApplicable, kNotApplicable);
   // Same substitution count with different denominators used for phred and percentage calculations

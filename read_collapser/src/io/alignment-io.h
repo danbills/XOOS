@@ -6,6 +6,7 @@
 #include <htslib/hts.h>
 #include <htslib/sam.h>
 
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
@@ -19,24 +20,30 @@
 
 namespace xoos::read_collapser {
 
-struct AlignmentReader {
-  io::HtsFilePtr bam;
-  io::SamHdrPtr hdr;
-  io::HtsIdxPtr idx;
-};
+/// Returns true if the record has a YF:i:1 BAM auxiliary tag, indicating a rescued secondary alignment
+/// from pangenome alignment that should be treated as a primary alignment for clustering.
+bool HasRescuedSecondaryTag(const bam1_t* record);
 
-AlignmentReader OpenAlignmentReader(const fs::path& location);
-
-vec<AlignmentReader> OpenAlignmentReaders(const fs::path& bam_filename, u32 reader_count);
-
-bool ShouldDiscardAlignment(const ReadCollapserOptions& options, const bam1_t* record, Metrics& metrics);
+/**
+ * Determine if the record in @p alignment_ptr should be discarded based on @p options like mapping quality and
+ * alignment. Specifically, the following criteria are applied:
+ * 1. If the mapping quality of the record is less than the minimum mapping quality specified
+ * 2. If any of the BAM flags specified in options.exclude_flags are set in the record's flags, with a special case for
+ *    secondary alignments with YF:i:1 tag when options.cluster_rescued_secondaries is true. In this case, the read is
+ *    not discarded if BAM_FSECONDARY is the only matching exclude flag and the YF:i:1 tag is present, indicating that
+ *    the read is a rescued secondary alignment that should be clustered.
+ * 3. If the discordant duplex error rate is above the threshold specified.
+ * 4. If clustering by UMI is enabled and the read is missing both 5' and 3' UMIs.
+ * The appropriate metrics in @p metrics are incremented based on the reason for discarding the record.
+ */
+bool ShouldDiscardRecord(const ReadCollapserOptions& options, const Alignment* alignment_ptr, Metrics& metrics);
 
 /**
  * Read all alignments from @p reader that overlap with @p region, reads will be filtered according to the @p options.
  * The alignments are stored in @p alignments.
  */
 void ReadAlignments(const ReadCollapserOptions& options,
-                    const AlignmentReader& reader,
+                    const io::AlignmentReader& reader,
                     const Region& region,
                     vec<AlignmentPtr>& alignments);
 
@@ -79,10 +86,10 @@ using UnmappedAlignmentWriter = std::function<void(const ClusterId&, const bam1_
  * size of 1. This is used to handle unmapped reads in the BAM file. The cluster ID is generated with @p
  * create_cluster_id for each unmapped read to ensure that each unmapped read has a unique cluster ID.
  */
-void ReadAndWriteUnmappedAlignments(const ReadCollapserOptions& options,
-                                    const CreateClusterId& create_cluster_id,
-                                    const AlignmentReader& reader,
-                                    const UnmappedAlignmentWriter& writer);
+void ReadAndWriteUnmappedReads(const ReadCollapserOptions& options,
+                               const CreateClusterId& create_cluster_id,
+                               const io::AlignmentReader& reader,
+                               const UnmappedAlignmentWriter& writer);
 
 /**
  * Write a single alignment @p record to @p output. If @p mark_duplicate is true, the alignment is marked as a

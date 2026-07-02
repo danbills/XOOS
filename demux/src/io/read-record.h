@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "adapters/duplex/umi/trim-info-duplex-umi.h"
-#include "adapters/ys/trim-info-ys.h"
-#include "adapters/ysu-sl/trim-info-ysu-sl.h"
-#include "adapters/ysu-te/trim-info-ysu-te.h"
+#include "adapters/simplex/trim-info-simplex.h"
+#include "adapters/ysu/trim-info-ysu.h"
+#include "sequence/matcher/match-position-states.h"
 #include "simd/simd-functions.h"
 #include "xoos/types/int.h"
 
@@ -23,7 +23,7 @@ struct MatchScore {
 };
 
 /**
- * KZ2024 - Original ReadRecord struct which uses four strings to store the id, comment, sequence, and
+ * Original ReadRecord struct which uses four strings to store the id, comment, sequence, and
  * quality score of a read. Key issue: allocating and copying strings is expensive and shows up in the profiler.
  */
 struct ReadRecord {
@@ -75,9 +75,8 @@ struct FixedReadRecord {                     // NOLINT - this is a struct, so we
   // cannot use a union because of non-trivial constructors
   // TODO use c++17 std::variant instead of a union?
   //      Alternatively since this determined at the start of the program run and doesn't change could use a template?
-  TrimInfoYsuSl trim_info_ysu_sl;
-  TrimInfoYsuTe trim_info_ysu_te;
-  TrimInfoYs trim_info_ys;
+  TrimInfoYsu trim_info_ysu;
+  TrimInfoSimplex trim_info_simplex;
   // has umi information, even if we don't use it
   TrimInfoDuplexUMI trim_info_duplex;
   uint file_sid{kUnassignedSID};  // Store sid found separately
@@ -149,7 +148,9 @@ struct FixedReadRecord {                     // NOLINT - this is a struct, so we
     // The trimmed read length is below the minimum read length
     kTrimmedTooShortFail,
     // There was extra expected loop sequence but we failed to trim it
-    kFailedMidadapterTrimFail
+    kFailedMidadapterTrimFail,
+    // The 5' and 3' SIDs disagree and the discordant-sid-mode requires discard
+    kDiscordantSidFail
   };
 
   /**
@@ -176,6 +177,7 @@ struct FixedReadRecord {                     // NOLINT - this is a struct, so we
       case kDuplexEditDistanceFail:
       case kDuplexTooLongFail:
       case kFailedMidadapterTrimFail:
+      case kDiscordantSidFail:
         // no longer a valid read so set the file_sid failed state
         file_sid = kUnassignedSID;
         break;
@@ -194,17 +196,21 @@ struct FixedReadRecord {                     // NOLINT - this is a struct, so we
 
   Status GetStatus() const { return _status; }
 
-  int hairpin_pos;
+  // Start position (inclusive) of the duplex loop sequence in the raw read, or -1 if not found
+  s32 loop_start_pos;
+  // End position (inclusive) of the duplex loop sequence in the raw read, or -1 if not found
+  s32 loop_end_pos;
   int error_metric;
 
   // Called to clear the record before reusing it.
   inline void Clear() {
     name_offset = comment_offset = seq_offset = qual_offset = end_offset = 0;
-    trim_info_ysu_sl.Clear();
-    trim_info_ysu_te.Clear();
+    trim_info_ysu.Clear();
+    trim_info_simplex.Clear();
     trim_info_duplex.Clear();
     SetStatus(Status::kNotRead);
-    hairpin_pos = -1;
+    loop_start_pos = kNoMatchPosition;
+    loop_end_pos = kNoMatchPosition;
     error_metric = 51360;  // why not (no sid found)
   }
 

@@ -19,6 +19,11 @@ identifiers:
 authors:
   - family-names: D'Costa
     given-names: Alister
+    email: 231282388+dcostaa1-roche@users.noreply.github.com
+    affiliation: Roche
+    orcid: "https://orcid.org/0009-0000-5868-0481"
+  - family-names: Afshinfard
+    given-names: Amirhossein
     affiliation: Roche
   - family-names: Carroll
     given-names: Ashley
@@ -34,6 +39,9 @@ authors:
   - family-names: Telu
     given-names: Bharath Kumar
     affiliation: Roche
+  - family-names: Bai
+    given-names: Cheng-Zong
+    affiliation: Roche
   - family-names: Perera
     given-names: Dilmi
     affiliation: Roche
@@ -46,6 +54,9 @@ authors:
   - family-names: Chan
     given-names: Fong Chun
     affiliation: Roche
+  - family-names: Yu
+    given-names: Jimmy
+    affiliation: Roche
   - family-names: Eizenga
     given-names: Jordan
     affiliation: Roche
@@ -57,6 +68,7 @@ authors:
   - family-names: Chu
     given-names: Justin
     affiliation: Roche
+    orcid: "https://orcid.org/0000-0003-0549-4997"
   - family-names: Nip
     given-names: Ka Ming
     email: 231298873+nipk-roche@users.noreply.github.com
@@ -79,6 +91,12 @@ authors:
     affiliation: Roche
   - family-names: Olegario
     given-names: Maynard
+    affiliation: Roche
+  - family-names: Kirsche
+    given-names: Melanie
+    affiliation: Roche
+  - family-names: Molnar
+    given-names: Mike
     affiliation: Roche
   - family-names: Dunn
     given-names: Nathan

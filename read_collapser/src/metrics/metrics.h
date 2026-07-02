@@ -1,14 +1,13 @@
 #pragma once
 
+#include <core/read-collapser-options.h>
+
 #include <xoos/concurrent/enumerable-thread-local.h>
 #include <xoos/histogram/histogram-summary.h>
 #include <xoos/types/fs.h>
 #include <xoos/types/int.h>
 
 namespace xoos::read_collapser {
-
-// kNA represents metric fields that are not applicable (e.g. consensus metrics will be NA for duplicate marking mode).
-constexpr std::string kNA = "NA";
 constexpr u16 kDefaultMaxClusterSize = 50;
 const vec<u8> kClusterSizesPrecision{
     0,  // total_clusters
@@ -33,22 +32,24 @@ enum class ReadCollapserMode {
 // This struct is used to store metrics related to the read collapser operations, such as clustering and consensus.
 struct Metrics {
   // output metrics
-  u64 input_reads{};
-  u64 discarded_missing_umi_reads{};
-  u64 discarded_low_mapq_reads{};
-  u64 discarded_by_flags_reads{};
-  u64 discarded_high_discordant_duplex_percentage_reads{};
-  u64 discarded_total_reads{};
+  u64 input_records{};
+  u64 discarded_missing_umi_records{};
+  u64 discarded_low_mapq_records{};
+  u64 discarded_by_flags_records{};
+  u64 discarded_high_discordant_duplex_percentage_records{};
+  u64 discarded_total_records{};
+  u64 rescued_secondary_alignments{};
   u64 unmapped_reads{};
   u64 unclustered_partial_reads{};
-  u64 unclustered_supplementary_reads{};
-  u64 unclustered_secondary_reads{};
+  u64 unclustered_supplementary_alignments{};
+  u64 unclustered_secondary_alignments{};
   u64 clustering_input_reads{};
   u64 clustering_reads{};
   u64 clustering_full_reads{};
   u64 clustering_partial_reads{};
   u64 clustering_unclustered_partial_reads{};
   u64 duplicate_reads{};
+  u64 duplicate_supplementary_alignments{};
   u64 unclustered_reads{};
   u64 total_clusters{};
   u64 singleton_clusters{};
@@ -103,19 +104,19 @@ struct Metrics {
   void UpdateClusterSizeHistogram(u64 cluster_size, const std::string& distribution_name, u64 value);
 
   void WriteSummaryStatsToTsv(const fs::path& output,
-                              const io::Comments& comments,
+                              const io::CommandLineInfo& command_line_info,
                               ReadCollapserMode use_case,
-                              bool cluster_by_umi) const;
+                              const ReadCollapserOptions& options) const;
 
-  void WriteClusterSizeHistogramsToTsv(const fs::path& output, const io::Comments& comments) const;
+  void WriteClusterSizeHistogramsToTsv(const fs::path& output, const io::CommandLineInfo& command_line_info) const;
 
-  void WriteClusterSizeHistogramSummariesToTsv(const fs::path& output, const io::Comments& comments) const;
+  void WriteClusterSizeHistogramSummariesToTsv(const fs::path& output,
+                                               const io::CommandLineInfo& command_line_info) const;
 
   void WriteAllMetricsToTsv(const fs::path& output_dir,
                             ReadCollapserMode use_case,
-                            bool cluster_by_umi,
-                            const std::string& version,
-                            const std::string& command_line) const;
+                            const ReadCollapserOptions& options,
+                            const io::CommandLineInfo& command_line_info) const;
 };
 
 Metrics& operator+=(Metrics& lhs, const Metrics& rhs);

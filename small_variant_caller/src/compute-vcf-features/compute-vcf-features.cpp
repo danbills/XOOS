@@ -20,6 +20,7 @@
 #include "util/file-util.h"
 #include "util/locked-tsv-writer.h"
 #include "util/log-util.h"
+#include "util/parallel-compute-utils.h"
 #include "util/seq-util.h"
 #include "vcf-field-util.h"
 #include "vcf-header-util.h"
@@ -31,6 +32,14 @@ namespace xoos::svc {
 static constexpr u64 kTandemRepeatSearchDistance{100};
 // Upstream window size before variant's start position for calculating variant density
 static constexpr u64 kVariantDensityUpstreamWindow{100};
+// Half-window size for GC content calculation (100 bp upstream + 100 bp downstream = 200 bp total)
+static constexpr u64 kGcContentHalfWindow{100};
+
+std::pair<u64, u64> GetGcContentWindow(const u64 pos, const u64 seq_len, const u64 half_window) {
+  const u64 start = pos >= half_window ? pos - half_window : 0;
+  const u64 end = std::min(pos + half_window, seq_len);
+  return {start, end};
+}
 
 /**
  * @brief Store the population allele frequency and quality for a variant.
@@ -145,7 +154,8 @@ static void UpdatePopafAtBlock(ChromFeatureBlock& block, io::VcfReader& reader) 
     // start from 1 to skip the REF allele
     s32 allele_idx = 1;
     for (const auto af : record->GetInfoFieldNoCheck<f32>(kFieldAf)) {
-      ref_alt_af.emplace_back(ref, record->Allele(allele_idx), af, qual);
+      const auto& [ref_trimmed, alt_trimmed] = TrimVariant(ref, record->Allele(allele_idx));
+      ref_alt_af.emplace_back(ref_trimmed, alt_trimmed, af, qual);
       ++allele_idx;
     }
   }
@@ -338,12 +348,10 @@ static void WriteAllFeatures(LockedTsvWriter& writer,
                              const vec<FeatureColumn>& feature_cols,
                              StrMap<vec<VcfFeature>>& chrom_to_features,
                              const u32 threads,
-                             const std::optional<CommandLineInfo>& cmd_info) {
-  // write version and command line as comments
+                             const std::optional<io::CommandLineInfo>& cmd_info) {
+  // write version and command line as metadata
   if (cmd_info.has_value()) {
-    io::Comments cmt;
-    io::AddVersionAndCommandLineComment(cmt, cmd_info.value().version, cmd_info.value().command_line);
-    writer.AppendComments(cmt);
+    writer.AppendMetadata(cmd_info.value());
   }
   // write header row
   writer.AppendRow(feature_names);
@@ -417,18 +425,20 @@ static void UpdateRepeatCounts(VcfFeature& feat) {
 
   // RPA is the number of times tandem repeat unit is repeated.
   // There are values for both REF and ALT alleles, but we are only interested in REF.
+  // RPA can be negative; clamp to 0 for the unsigned repeat count fields.
+  const auto rpa_clamped = static_cast<u32>(std::max(s32{0}, feat.rpa_ref));
   switch (feat.ru.length()) {
     case kHomoPolymerRepeatUnitLength:
-      feat.homopolymer = feat.rpa_ref;
+      feat.homopolymer = rpa_clamped;
       break;
     case kDiRepeatUnitLength:
-      feat.direpeat = feat.rpa_ref;
+      feat.direpeat = rpa_clamped;
       break;
     case kTriRepeatUnitLength:
-      feat.trirepeat = feat.rpa_ref;
+      feat.trirepeat = rpa_clamped;
       break;
     case kQuadRepeatUnitLength:
-      feat.quadrepeat = feat.rpa_ref;
+      feat.quadrepeat = rpa_clamped;
       break;
     default:
       break;
@@ -557,7 +567,7 @@ static std::optional<VcfFeature> RecordToFeature(const io::VcfRecordPtr& record,
         feat.ru = record->GetInfoFieldStringNoCheck(kFieldRu);
       }
       std::tie(feat.rpa_ref, feat.rpa_alt) =
-          GetInfoRefAlt<s32, u32>(header_info.has_rpa, record, allele_index, kFieldRpa);
+          GetInfoRefAlt<s32, s32>(header_info.has_rpa, record, allele_idx_u, kFieldRpa);
       UpdateRepeatCounts(feat);
     }
   }
@@ -604,7 +614,7 @@ static std::optional<VcfFeature> RecordToFeature(const io::VcfRecordPtr& record,
   return feat;
 }
 
-RepeatCounts GetRepeatCounts(const std::string& seq) {
+RepeatCounts GetRepeatCounts(const std::string_view seq) {
   // Count the number of repetitions for each repeat type
   u32 homopolymer = GetHomopolymerLength(seq);
   u32 direpeat = CountRepeats(seq, 2);
@@ -642,19 +652,19 @@ RepeatCounts GetRepeatCounts(const std::string& seq) {
  */
 struct RegionInfo {
   // chromosome name
-  const std::string chrom;
+  std::string chrom;
   // chromosome index in the VCF index
-  const s32 chrom_index;
+  s32 chrom_index;
   // 0-based, inclusive start position
-  const u64 start;
+  u64 start;
   // 0-based, exclusive end position
-  const u64 end;
+  u64 end;
   // flag whether the POPAF VCF is provided
-  const bool has_popaf_vcf;
+  bool has_popaf_vcf;
   // reference sequence for the chromosome
   const std::string& chrom_seq;
   // flag whether to extract features for germline-tagging workflow
-  const bool is_germline_tagging;
+  bool is_germline_tagging;
 };
 
 /**
@@ -672,6 +682,7 @@ struct RefSeqFeatures {
   u32 direpeat{0};
   u32 trirepeat{0};
   u32 quadrepeat{0};
+  f32 gc_content{0};
 };
 
 /**
@@ -681,7 +692,7 @@ struct RefSeqFeatures {
  * @param count_repeats Flag whether to count tandem repeats in the sequence context
  * @return RefSeqFeatures struct containing extracted sequence context features
  */
-static RefSeqFeatures GetRefSeqFeatures(const std::string& ref_seq, const u64 pos, const bool count_repeats) {
+static RefSeqFeatures GetRefSeqFeatures(const std::string_view ref_seq, const u64 pos, const bool count_repeats) {
   static constexpr u64 kShortContext{2};
   static constexpr u64 kLongContext{30};
   // start position of the sequence context after the variant position
@@ -709,6 +720,11 @@ static RefSeqFeatures GetRefSeqFeatures(const std::string& ref_seq, const u64 po
     feat.trirepeat = trirepeat;
     feat.quadrepeat = quadrepeat;
   }
+  // GC content in a 200-bp window centered on the variant's start position
+  const auto [gc_start, gc_end] = GetGcContentWindow(pos, seq_len, kGcContentHalfWindow);
+  if (gc_end > gc_start) {
+    feat.gc_content = CalculateGcContent(ref_seq.substr(gc_start, gc_end - gc_start));
+  }
   return feat;
 }
 
@@ -734,6 +750,7 @@ static void UpdateFeatureWithRefSeqFeatures(VcfFeature& feat,
     feat.trirepeat = ref_seq_feat.trirepeat;
     feat.quadrepeat = ref_seq_feat.quadrepeat;
   }
+  feat.gc_content = ref_seq_feat.gc_content;
 }
 
 /**
@@ -869,19 +886,41 @@ static void SortByPosition(vec<VcfFeature>& features) {
   std::ranges::sort(features, [](const VcfFeature& a, const VcfFeature& b) { return a.pos < b.pos; });
 }
 
+/**
+ * @brief Look up pre-computed variant density for a given position using binary search.
+ * @param ps_variants Sorted vector of pre-scan entries for the chromosome
+ * @param ps_density Density values indexed parallel to ps_variants
+ * @param pos 0-based variant position to look up
+ * @return Pre-computed density value, or 1 if the position is not found
+ */
+static u32 LookupPreScanDensity(const vec<VariantPreScanEntry>& ps_variants,
+                                const vec<u32>& ps_density,
+                                const u64 pos) {
+  const auto it = std::ranges::lower_bound(ps_variants, pos, {}, &VariantPreScanEntry::pos);
+  if (it != ps_variants.end() && it->pos == pos) {
+    const auto idx = static_cast<size_t>(std::distance(ps_variants.begin(), it));
+    return ps_density.at(idx);
+  }
+  // Fallback: count only itself
+  return 1;
+}
+
 VarIdToVcfFeatures ExtractFeaturesForRegion(io::VcfReader& vcf_reader,
                                             const fs::path& genome_path,
                                             std::optional<io::VcfReader>& popaf_reader,
                                             const ChromIntervalsMap& target_regions,
                                             const ChromIntervalsMap& interest_regions,
                                             const std::string& chrom,
-                                            const bool is_germline_tagging) {
+                                            const VcfFeatureExtractionParams& params) {
   // Overview:
   // 1. Extract relevant information from VCF header
   // 2. Extract features for target regions in the same chromosome
   // 3. Update POPAF values for extracted features if a POPAF VCF is provided
-  // 4. Update variant density for each extracted feature struct
+  // 4. Update variant density: use pre-computed values if available, otherwise compute per-region
   // 5. Convert features vector to PositionToVcfFeaturesMap
+
+  const bool has_pre_scan = params.pre_scan_variants != nullptr && params.pre_scan_density != nullptr &&
+                            params.pre_scan_variants->contains(chrom) && params.pre_scan_density->contains(chrom);
 
   const ChromToIndexes& chrom_indexes = vcf_reader.GetContigIndexes();
   if (!chrom_indexes.contains(chrom)) {
@@ -900,7 +939,7 @@ VarIdToVcfFeatures ExtractFeaturesForRegion(io::VcfReader& vcf_reader,
                                      .end = (target_regions.at(chrom).end() - 1)->end,
                                      .has_popaf_vcf = popaf_reader.has_value(),
                                      .chrom_seq = chrom_seq,
-                                     .is_germline_tagging = is_germline_tagging};
+                                     .is_germline_tagging = params.is_germline_tagging};
 
   const VcfHeaderInfo& header_info = GetVcfHeaderInfo(vcf_reader.GetHeader());
   auto features = ComputeVcfFeaturesForRegion(vcf_region, vcf_reader, target_regions, interest_regions, header_info);
@@ -920,13 +959,24 @@ VarIdToVcfFeatures ExtractFeaturesForRegion(io::VcfReader& vcf_reader,
     }
   }
 
-  StrMap<vec<VcfFeature>> chrom_features;
-  chrom_features[chrom] = features;
-  UpdateVariantDensity(chrom_features);
+  if (has_pre_scan) {
+    // Use pre-computed density from the full-chromosome pre-scan (no boundary artifacts)
+    const auto& ps_variants = params.pre_scan_variants->at(chrom);
+    const auto& ps_density = params.pre_scan_density->at(chrom);
+    for (auto& feat : features) {
+      feat.variant_density = LookupPreScanDensity(ps_variants, ps_density, feat.pos);
+    }
+  } else {
+    // Fallback: compute density per-region (used by direct callers that omit pre-scan parameters)
+    StrMap<vec<VcfFeature>> chrom_features;
+    chrom_features[chrom] = features;
+    UpdateVariantDensity(chrom_features);
+    features = std::move(chrom_features[chrom]);
+  }
 
   // Return a map of VariantId to VcfFeature for easy lookup
   VarIdToVcfFeatures features_map;
-  for (const auto& feat : chrom_features.at(chrom)) {
+  for (const auto& feat : features) {
     const VariantId id(feat.chrom, feat.pos, feat.ref, feat.alt);
     features_map[id] = feat;
   }
@@ -1197,22 +1247,48 @@ static ChromIntervalsMap ExtractFeatureIntervalMap(const StrMap<vec<VcfFeature>>
   return output_chrom_intervals;
 }
 
+/**
+ * @brief Update variant density for all features using pre-scan data.
+ * @details Looks up each feature's density from the pre-computed per-chromosome density vectors,
+ * avoiding boundary artifacts that occur when density is computed only on extracted features.
+ * @param chrom_to_features Map of chromosome to vector of VcfFeature
+ * @param pre_scan Pre-scan result containing per-chromosome variant data and density
+ */
+static void UpdateVariantDensityFromPreScan(StrMap<vec<VcfFeature>>& chrom_to_features,
+                                            const VcfPreScanResult& pre_scan) {
+  for (auto& [chrom, features] : chrom_to_features) {
+    if (!pre_scan.chrom_variants.contains(chrom) || !pre_scan.chrom_variant_density.contains(chrom)) {
+      continue;
+    }
+    const auto& ps_variants = pre_scan.chrom_variants.at(chrom);
+    const auto& ps_density = pre_scan.chrom_variant_density.at(chrom);
+    for (auto& feat : features) {
+      feat.variant_density = LookupPreScanDensity(ps_variants, ps_density, feat.pos);
+    }
+  }
+}
+
 void ComputeVcfFeatures(const ComputeVcfFeaturesParam& param) {
   // Overview:
-  // 1. extract features from the input VCF file and reference genome FASTA file
-  // 2. update variant density for all extracted features
-  // 3. update POPAF values for all extracted features, if POPAF VCF file is available
-  // 4. write feature positions to a BED file, if BED file path is specified
-  // 5. write features to output TSV file, if output file path is specified
+  // 1. pre-scan the VCF to compute variant density across full chromosomes
+  // 2. extract features from the input VCF file and reference genome FASTA file
+  // 3. update variant density from pre-scan data (boundary-free)
+  // 4. update POPAF values for all extracted features, if POPAF VCF file is available
+  // 5. write feature positions to a BED file, if BED file path is specified
+  // 6. write features to output TSV file, if output file path is specified
 
   const SVCConfig model_config = param.config;
   const auto threads = static_cast<u32>(param.threads);
+
+  // Pre-scan the full VCF (without target-region filtering) so variant density is computed
+  // across entire chromosomes, avoiding boundary artifacts at target-region edges.
+  const auto pre_scan = ParallelVcfPreScan(param.vcf_file, param.threads, std::nullopt);
 
   auto chrom_to_features = ExtractFeatures(param, model_config.vcf_feature_cols);
   if (chrom_to_features.empty()) {
     WarnAsErrorIfSet("There are no variants with extracted features!");
   } else {
-    UpdateVariantDensity(chrom_to_features);
+    UpdateVariantDensityFromPreScan(chrom_to_features, pre_scan);
 
     if (param.pop_af_vcf.has_value()) {
       Logging::Info("updating POPAF values...");

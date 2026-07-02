@@ -6,18 +6,36 @@
 
 #include <xoos/io/htslib-util/htslib-util.h>
 #include <xoos/types/int.h>
+#include <xoos/util/sequence-functions.h>
 #include <xoos/yc-decode/yc-decoder.h>
 
 namespace xoos::read_collapser {
 
+Alignment::Alignment(io::Bam1Ptr record, const bool expect_umis, const bool ignore_read_name_parsing_errors)
+    : record(std::move(record)),
+      is_hairpin_read(bam_aux_get(this->record.get(), "YC") != nullptr),
+      end_pos(static_cast<u32>(bam_endpos(this->record.get()))),
+      original_flags(this->record->core.flag) {
+  UpdateReadAdapterInfo(*this, expect_umis, ignore_read_name_parsing_errors);
+}
+
 Alignment::Alignment(io::Bam1Ptr record)
     : record(std::move(record)),
+      is_hairpin_read(bam_aux_get(this->record.get(), "YC") != nullptr),
       end_pos(static_cast<u32>(bam_endpos(this->record.get()))),
       original_flags(this->record->core.flag) {
 }
 
 bool Alignment::IsPartial() const {
-  return (umi5p == std::nullopt || umi3p == std::nullopt) && !(umi5p == std::nullopt && umi3p == std::nullopt);
+  return !is_5p_complete || !is_3p_complete;
+}
+
+bool Alignment::IsFivePrimeComplete() const {
+  return is_5p_complete;
+}
+
+bool Alignment::IsThreePrimeComplete() const {
+  return is_3p_complete;
 }
 
 bool Alignment::IsReverse() const {
@@ -54,6 +72,46 @@ vec<yc_decode::BaseType> Alignment::GetBaseTypes() const {
     base_types = decoded_yc_tag.GetBaseTypes();
   }
   return base_types;
+}
+
+void UpdateReadAdapterInfo(Alignment& alignment, const bool expect_umis, const bool ignore_parsing_errors) {
+  const std::string_view qname{bam_get_qname(alignment.record.get())};
+  // Parse the UMI from the read name. The UMI is expected to be at the end of the qname, separated by '|'.
+  const AdapterInfo adapter_info =
+      ignore_parsing_errors ? ParseReadNameNoExcept(qname, expect_umis) : ParseReadName(qname, expect_umis);
+  // During alignment the direction of the read is determined, but the UMIs are not updated.
+  // If the alignment is reverse, we swap the 5' and 3' UMIs. If the UMI are sequences,
+  // we also need to reverse complement them.
+  Umi umi5p = std::nullopt;
+  Umi umi3p = std::nullopt;
+  if (expect_umis) {
+    umi5p = adapter_info.umi5p;
+    umi3p = adapter_info.umi3p;
+    if (alignment.IsReverse()) {
+      umi5p = IsSequenceUmi(umi5p) ? sequence::ReverseComplement(umi5p.value()) : umi5p;
+      umi3p = IsSequenceUmi(umi3p) ? sequence::ReverseComplement(umi3p.value()) : umi3p;
+      std::swap(umi5p, umi3p);
+    }
+  }
+  alignment.umi5p = umi5p;
+  alignment.umi3p = umi3p;
+  // If we expect UMIs, then the presence of UMI on the read ends determines whether the read is partial or full.
+  // If we do not expect UMIs, then the presence of SID on the read ends determines whether the read is partial or full.
+  alignment.is_5p_complete = expect_umis ? adapter_info.has_5p_umi : adapter_info.has_5p_sid;
+  alignment.is_3p_complete = expect_umis ? adapter_info.has_3p_umi : adapter_info.has_3p_sid;
+  if (alignment.IsReverse()) {
+    std::swap(alignment.is_3p_complete, alignment.is_5p_complete);
+  }
+  // If the read has a YC tag, it is a hairpin duplex read and it is always considered to be full
+  // since reads with missing SID or hairpin adapter are discarded upstream during demux.
+  if (bam_aux_get(alignment.record.get(), "YC") != nullptr) {
+    alignment.is_3p_complete = true;
+    alignment.is_5p_complete = true;
+  }
+}
+
+bool Alignment::HasSaTag() const {
+  return bam_aux_get(record.get(), "SA") != nullptr;
 }
 
 }  // namespace xoos::read_collapser

@@ -40,7 +40,7 @@ struct ReadCountsByClusterSize {
   std::vector<ReadCountByClusterSize> read_counts_by_cluster_size{};
 
   static std::vector<std::string> GetHeaders();
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   ReadCountsByClusterSize& operator+=(const ReadCountsByClusterSize& other);
   ReadCountByClusterSize& operator[](size_t cluster_size_index);

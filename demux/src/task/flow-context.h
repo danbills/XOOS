@@ -9,13 +9,20 @@
 #include "task/batch.h"
 
 namespace xoos::demux {
+
+constexpr std::string_view kReservedRawFailedName = "raw_failed";
+constexpr std::string_view kProvenanceFilename = "file_provenance.tsv";
+constexpr std::string_view kFullReadSubdir = "full";
+constexpr std::string_view kPartialReadSubdir = "partial";
+
 class Sink;
 class FlowManager;
+struct SinkData;
 
 /// @brief FlowContext holds the state of the flow graph associated with processing one input file.
 class FlowContext {
  public:
-  FlowContext(const FlowManager& mgr, const fs::path& input_file);
+  FlowContext(const FlowManager& mgr, const fs::path& input_file, size_t input_index);
   ~FlowContext();
 
   /// Read data from the input file and write the data into the memory area pre-allocated for the batch.
@@ -96,5 +103,14 @@ class FlowContext {
 
   // Helper function to convert a batch number to an index in the tasks vector.
   size_t static BatchNrToIndex(size_t batch_nr) { return batch_nr % BatchTask::kCircularBufferSize; }
+
+  // Increment the write-completion counter without performing a write.
+  // Used by the error handler in SinkData::operator()() so the destructor
+  // spin-wait can terminate after a failed write.
+  void IncrementWritesCompleted() { ++_nr_writes_completed; }
+
+  // We need to give SinkData access to IncrementWritesCompleted() to gracefully handle write errors and prevent the
+  // destructor from stalling indefinitely.
+  friend struct SinkData;
 };
 }  // namespace xoos::demux

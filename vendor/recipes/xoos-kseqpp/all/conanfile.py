@@ -16,7 +16,7 @@ class kseqppRecipe(ConanFile):
         cmake_layout(self)
 
     def requirements(self):
-        self.requires("zlib-ng/2.2.2", options={"zlib_compat": True})
+        self.requires("zlib-ng/2.3.3", options={"zlib_compat": True})
         self.requires("bzip2/1.0.8", options={"build_executable": False})
 
     def source(self):

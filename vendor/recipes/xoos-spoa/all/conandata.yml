@@ -3,3 +3,7 @@ sources:
         url: "https://github.com/rvaser/spoa/archive/refs/tags/4.1.0.tar.gz"
         sha256: "43238356f00bce2ad9698fc18b3e320024172a82182dcff24d57c5cf19e342c8"
         strip_root: true
+    "4.1.5":
+        url: "https://github.com/rvaser/spoa/archive/refs/tags/4.1.5.tar.gz"
+        sha256: "b5d323740b01255c55725e88db2548c666a05bc83b825c19cfac10586e21e7b3"
+        strip_root: true

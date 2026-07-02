@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <tuple>
 
 #include "io/memory-file-stream.h"
@@ -62,17 +64,26 @@ class RdbSequenceReader : public SequenceReader {
 
  private:
   void LoadBlock();
+  /// Parse the block header to identify read type and version
+  /// sets: _read_name_prefix, _cycle_id, and _read_name_prefix
+  /// and return a properly formatted RDB read name prefix
+  std::string ParseRunIdAndCycleId(std::string_view header);
   u32 ReadSingleFixed(FixedReadRecord& rec);
   bool HasMoreReads() const;
 
+  /// Used for header reads in LoadBlock().
   std::ifstream _file;
   // the file path is stored here for logging purposes in case of errors during reading, so that we can log the file
   // path even if the error occurs in another thread
   fs::path _file_path;
-  MemoryFileStream<> _read_seq_stream;
-  MemoryFileStream<> _read_qual_stream;
-  MemoryFileStream<> _read_len_stream;
-  MemoryFileStream<> _read_cell_index_stream;
+  // Each stream owns its own ifstream (separate fd) so that concurrent
+  // sequential reads from different dataset regions don't cause seek
+  // contention on a shared fd.  This is important on network filesystems
+  // (Lustre) where seeks disrupt kernel readahead.
+  std::unique_ptr<MemoryFileStream<>> _read_seq_stream;
+  std::unique_ptr<MemoryFileStream<>> _read_qual_stream;
+  std::unique_ptr<MemoryFileStream<>> _read_len_stream;
+  std::unique_ptr<MemoryFileStream<>> _read_cell_index_stream;
 
   u8 _qual_buf[kMaxReadLength]{};
 

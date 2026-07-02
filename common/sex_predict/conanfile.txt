@@ -1,31 +1,29 @@
 [requires]
-xoos-htslib/1.21
+xoos-htslib/1.23.1
 
 # common::io
 ms-gsl/4.1.0
-stduuid/1.2.3
 vincentlaucsb-csv-parser/2.3.0
 
 # common::log
-spdlog/1.15.0
+spdlog/1.17.0
 
 # common::util
-fmt/11.0.2
+fmt/12.1.0
 
 [test_requires]
-catch2/3.8.0
+catch2/3.14.0
 
 # included from common::test_util from common::io
 nlohmann_json/3.11.3
 # common::cli
-cli11/2.4.2
+cli11/2.6.0
 # common::enum
 magic_enum/0.9.7
 
 
 [options]
 xoos-htslib/*:with_zlibng=True
-zlib-ng/*:zlib_compat=True
 
 [generators]
 CMakeDeps

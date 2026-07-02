@@ -94,6 +94,8 @@ s32 SamHdrName2Tid(sam_hdr_t* hdr, const std::string& target);
 
 void BamAuxAppend(bam1_t* record, const std::string& name, u32 value);
 
+void BamAuxAppend(bam1_t* record, const std::string& name, s32 value);
+
 void BamAuxAppend(bam1_t* record, const std::string& name, const std::string& value);
 
 void BamAuxUpdateStr(bam1_t* record, const std::string_view& tag, const std::string_view& value);

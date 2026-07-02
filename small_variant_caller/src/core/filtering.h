@@ -15,50 +15,54 @@
 namespace xoos::svc {
 
 // VCF outout FILTER field IDs
-const std::string kFilteringMapQualityId = "mapquality";
-const std::string kFilteringBaseQualityId = "basequality";
-const std::string kFilteringAFId = "Allele_Freq";
-const std::string kFilteringMinAltCountsId = "Min_Alt_Counts";
-const std::string kFilteringCountsId = "Counts";
-const std::string kFilteringMLScoreId = "ML_Score";
-const std::string kFilteringBlocklistedId = "BLOCKLISTED";
-const std::string kFilteringForcedId = "FORCED";
-const std::string kFilteringPassId = "PASS";
-const std::string kFilteringFailId = "FAIL";
-const std::string kFilteringFailSomaticTNMLId = "Somatic_TN_ML";
-const std::string kFilteringFailSomaticTNNormalADId = "NormalAD";
-const std::string kFilteringFailSomaticTNGermlineId = "GermlineTagging";
-const std::string kFilteringMissingFeatureId = "missing_feature";
-const std::string kFilteringFalsePositiveId = "false_positive";
-const std::string kFilteringMultialleleFormatId = "multiallele_format";
-const std::string kFilteringMultiallelePartnerId = "multiallele_partner";
-const std::string kFilteringMultialleleConflictId = "multiallele_conflict";
-const std::string kFilteringNonAcgtRefAltId = "non_acgt_ref_alt";
+constexpr auto* kFilteringMapQualityId = "mapquality";
+constexpr auto* kFilteringBaseQualityId = "basequality";
+constexpr auto* kFilteringAFId = "Allele_Freq";
+constexpr auto* kFilteringMinAltCountsId = "Min_Alt_Counts";
+constexpr auto* kFilteringCountsId = "Counts";
+constexpr auto* kFilteringMLScoreId = "ML_Score";
+constexpr auto* kFilteringBlocklistedId = "BLOCKLISTED";
+constexpr auto* kFilteringForcedId = "FORCED";
+constexpr auto* kFilteringPassId = "PASS";
+constexpr auto* kFilteringFailId = "FAIL";
+constexpr auto* kFilteringFailMinTumorSupportId = "min_tumor_support";
+constexpr auto* kFilteringFailMaxNormalSupportId = "max_normal_support";
+constexpr auto* kFilteringFailMinTumorAfId = "min_tumor_af";
+constexpr auto* kFilteringFailMinDpRatioId = "min_dp_ratio";
+constexpr auto* kFilteringFailSomaticTNGermlineId = "GermlineTagging";
+constexpr auto* kFilteringFailMaxIndelSizeId = "max_indel_size";
+constexpr auto* kFilteringMissingFeatureId = "missing_feature";
+constexpr auto* kFilteringFalsePositiveId = "false_positive";
+constexpr auto* kFilteringMultialleleFormatId = "multiallele_format";
+constexpr auto* kFilteringMultiallelePartnerId = "multiallele_partner";
+constexpr auto* kFilteringMultialleleConflictId = "multiallele_conflict";
+constexpr auto* kFilteringNonAcgtRefAltId = "non_acgt_ref_alt";
 
 // VCF output descriptions
-const std::string kFilteringPassDesc = "All filters passed";
-const std::string kFilteringFailDesc = "One or more filters failed";
-const std::string kFilteringGermlinePassDesc = "Site contains at least one allele that passes filters";
-const std::string kFilteringGermlineFailDesc = "Variant is filtered out by ML";
-const std::string kFilteringMapQualityDesc = "Filtered due to mapping quality";
-const std::string kFilteringAFDesc = "Filtered due to allele frequency";
-const std::string kFilteringMinAltCountsDesc = "Filtered due to alt counts";
-const std::string kFilteringBaseQualityDesc = "Filtered due to base quality";
-const std::string kFilteringCountsDesc = "Filtered due to low counts";
-const std::string kFilteringMLScoreDesc = "Filtered due to low ML Score";
-const std::string kFilteringForcedDesc = "Filtered due to being a forced variant call";
-const std::string kFilteringBlocklistedDesc = "Variant blocklisted";
-const std::string kFilteringFailSomaticTNMLDesc = "Filtered due to low Somatic TN ML Score";
-const std::string kFilteringFailSomaticTNNormalADDesc = "Filtered due to high Normal AD counts in somatic variant call";
-const std::string kFilteringFailSomaticTNGermlineDesc =
-    "Filtered due to being classified as a possible germline variant";
-const std::string kFilteringMissingFeatureDesc = "Filtered due to missing ML feature";
-const std::string kFilteringFalsePositiveDesc = "Filtered due to ML model classification as false positive";
-const std::string kFilteringMultialleleFormatDesc = "Filtered due to multi-allele record format failure";
-const std::string kFilteringMultiallelePartnerDesc = "Filtered due to missing multi-allele partner";
-const std::string kFilteringMultialleleConflictDesc =
-    "Filtered due to conflicting multi-allele ML model classification";
-const std::string kFilteringNonAcgtRefAltDesc = "Filtered due to non-ACGT reference or alternate allele(s)";
+constexpr auto* kFilteringPassDesc = "All filters passed";
+constexpr auto* kFilteringFailDesc = "One or more filters failed";
+constexpr auto* kFilteringGermlinePassDesc = "Site contains at least one allele that passes filters";
+constexpr auto* kFilteringGermlineFailDesc = "Variant is filtered out by ML";
+constexpr auto* kFilteringMapQualityDesc = "Filtered due to mapping quality";
+constexpr auto* kFilteringAFDesc = "Filtered due to allele frequency";
+constexpr auto* kFilteringMinAltCountsDesc = "Filtered due to alt counts";
+constexpr auto* kFilteringBaseQualityDesc = "Filtered due to base quality";
+constexpr auto* kFilteringCountsDesc = "Filtered due to low counts";
+constexpr auto* kFilteringMLScoreDesc = "Filtered due to low ML Score";
+constexpr auto* kFilteringForcedDesc = "Filtered due to being a forced variant call";
+constexpr auto* kFilteringBlocklistedDesc = "Variant blocklisted";
+constexpr auto* kFilteringFailMinTumorSupportDesc = "Filtered due to low supporting reads in tumor sample";
+constexpr auto* kFilteringFailMaxNormalSupportDesc = "Filtered due to high supporting reads in normal sample";
+constexpr auto* kFilteringFailMinTumorAfDesc = "Filtered due to low allele frequency in tumor sample";
+constexpr auto* kFilteringMinDpRatioDesc = "Filtered due to low DP relative to chromosome median DP";
+constexpr auto* kFilteringFailSomaticTNGermlineDesc = "Filtered due to being classified as a possible germline variant";
+constexpr auto* kFilteringFailMaxIndelSizeDesc = "Filtered due to large indel size";
+constexpr auto* kFilteringMissingFeatureDesc = "Filtered due to missing ML feature";
+constexpr auto* kFilteringFalsePositiveDesc = "Filtered due to ML model classification as false positive";
+constexpr auto* kFilteringMultialleleFormatDesc = "Filtered due to multi-allele record format failure";
+constexpr auto* kFilteringMultiallelePartnerDesc = "Filtered due to missing multi-allele partner";
+constexpr auto* kFilteringMultialleleConflictDesc = "Filtered due to conflicting multi-allele ML model classification";
+constexpr auto* kFilteringNonAcgtRefAltDesc = "Filtered due to non-ACGT reference or alternate allele(s)";
 
 // Settings for `somatic` workflow variants filtering
 struct FilterSettings {
@@ -117,7 +121,6 @@ struct PhasedFilterSettings {
   const u32 min_alt_counts{0};
 };
 
-// TODO: move these two functions to a more appropriate place, e.g. `variant-info`?
 std::string GetVariantCorrelationKey(const VariantId& vi, bool pad_left = true);
 std::string GetVariantCorrelationKey(
     const std::string& chrom, u64 position, const std::string& ref, const std::string& alt, bool pad_left = true);

@@ -1,5 +1,4 @@
-add_library(xoos_error
-    STATIC
+add_default_library(xoos_error
     xoos/error/error.cpp
 )
 target_include_directories(xoos_error
@@ -15,6 +14,6 @@ target_include_directories(xoos_error
 find_package(fmt REQUIRED)
 
 target_link_libraries(xoos_error
-    PRIVATE
+    PUBLIC
     fmt::fmt
 )

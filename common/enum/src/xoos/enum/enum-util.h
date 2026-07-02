@@ -19,7 +19,7 @@ namespace xoos::enum_util {
 template <typename T>
 std::optional<T> ParseEnumName(const std::string& text, const std::optional<T>& default_value = std::nullopt) {
   auto k_text = "k" + text;
-  std::erase_if(k_text, [](char c) { return c == '-' || c == '.'; });
+  std::erase_if(k_text, [](const char c) { return c == '-' || c == '.'; });
   auto result = magic_enum::enum_cast<T>(k_text, magic_enum::case_insensitive);
   return result ? result : default_value;
 }
@@ -53,21 +53,14 @@ std::vector<std::string> FormatEnumName(const std::vector<T>& values) {
   return names;
 }
 
-// TODO(iqbalt1) remove this function once MRD caller switches to using dash-separated enum names
+// TODO: remove once downstream callers (e.g. tumor_fraction_estimator) switch to FormatEnumName  // NOSONAR
 /**
- * @brief Converts enum values into string name without dashes and all lowercase
+ * @brief Converts enum values into string name without dashes, preserving original case.
  */
 template <typename T>
 std::string ToString(T value) {
   auto name = std::string{magic_enum::enum_name(value)};
-  name = name.starts_with("k") ? name.substr(1) : name;
-  // change it to lower case
-  std::string result;
-  for (auto c : name) {
-    result += static_cast<char>(c);
-    // result += static_cast<char>(std::tolower(c));
-  }
-  return result;
+  return name.starts_with("k") ? name.substr(1) : name;
 }
 
 /**
@@ -77,8 +70,7 @@ template <typename T>
 std::string FormatEnumNames(const std::string& l_wrap = "[", const std::string& r_wrap = "]") {
   auto values = magic_enum::enum_values<T>();
   std::vector<std::string> names{values.size()};
-  std::ranges::transform(
-      std::cbegin(values), std::cend(values), std::begin(names), [](const auto& v) { return FormatEnumName(v); });
+  std::ranges::transform(values, std::begin(names), [](const auto& v) { return FormatEnumName(v); });
   return fmt::format("{}{}{}", l_wrap, fmt::join(names, ", "), r_wrap);
 }
 

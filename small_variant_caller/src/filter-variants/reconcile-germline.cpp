@@ -24,7 +24,7 @@ void GetGTIndexes(const vec<VariantId>& vids,
                   vec<size_t>& gt12_indexes,
                   u32& num_fail,
                   vec<size_t>& gt01_11_indexes,
-                  const vec<GenotypeScore>& ml_genotypes) {
+                  const vec<PredictionScore>& ml_genotypes) {
   // Get the indexes of the variants based on their genotypes and store them in the relevant vectors. Needed for
   // downstream filtering
   using enum VariantType;
@@ -60,9 +60,9 @@ static void UpdateGenotypeRelatedFieldsHelper(const io::VcfRecordPtr& record,
                                               const vec<f32>& af,
                                               const vec<s32>& an) {
   record->AddFilter(filter);
-  record->SetInfoField<s32>(kFieldAc, ac);
-  record->SetInfoField<f32>(kFieldAf, af);
-  record->SetInfoField<s32>(kFieldAn, an);
+  record->SetInfoField(kFieldAc, ac);
+  record->SetInfoField(kFieldAf, af);
+  record->SetInfoField(kFieldAn, an);
   record->SetGTField(GenotypeToString(genotype));
 }
 
@@ -110,11 +110,11 @@ void FailRecord(const io::VcfRecordPtr& record, const std::string& fail_id, cons
  * @brief Helper function to update the ML score, genotype quality, and variant quality fields of a VCF record based on
  * the predicted genotype score.
  * @param record VCF record to be updated
- * @param score GenotypeScore struct containing the genotype, ML score, genotype quality, and variant quality
+ * @param score PredictionScore struct containing the genotype, ML score, genotype quality, and variant quality
  */
-static void UpdateScoreRelatedFields(const io::VcfRecordPtr& record, const GenotypeScore& score) {
-  record->SetFormatField<f32>(kMachineLearningId, {static_cast<f32>(score.probability)});
-  record->SetFormatField<s32>(kFieldGq, {score.genotype_quality});
+static void UpdateScoreRelatedFields(const io::VcfRecordPtr& record, const PredictionScore& score) {
+  record->SetFormatField(kMachineLearningId, vec<f32>{static_cast<f32>(score.probability)});
+  record->SetFormatField(kFieldGq, vec<s32>{score.genotype_quality});
   record->SetQuality(score.variant_quality);
 }
 
@@ -128,7 +128,7 @@ static void UpdateScoreRelatedFields(const io::VcfRecordPtr& record, const Genot
 static void FailAndAddGermlineDiploidRecords(const vec<io::VcfRecordPtr>& in_records,
                                              vec<io::VcfRecordPtr>& out_records,
                                              const vec<size_t>& skip_indexes,
-                                             const vec<GenotypeScore>& ml_genotypes) {
+                                             const vec<PredictionScore>& ml_genotypes) {
   using enum Genotype;
   for (size_t i = 0; i < in_records.size(); ++i) {
     if (std::ranges::find(skip_indexes, i) == skip_indexes.end()) {
@@ -159,11 +159,11 @@ static void FailAndAddGermlineDiploidRecords(const vec<io::VcfRecordPtr>& in_rec
  * @param score2 Second predicted genotype score
  */
 static void UpdateScoreRelatedFields(const io::VcfRecordPtr& record,
-                                     const GenotypeScore& score1,
-                                     const GenotypeScore& score2) {
+                                     const PredictionScore& score1,
+                                     const PredictionScore& score2) {
   const bool is_score1_gt12 = score1.genotype == Genotype::kGT12;
   const bool is_score2_gt12 = score2.genotype == Genotype::kGT12;
-  // If only one of the two alleles is classified as GT=1/2, we use the GenotypeScore from that allele.
+  // If only one of the two alleles is classified as GT=1/2, we use the PredictionScore from that allele.
   if (is_score1_gt12 && !is_score2_gt12) {
     UpdateScoreRelatedFields(record, score1);
     return;
@@ -172,14 +172,14 @@ static void UpdateScoreRelatedFields(const io::VcfRecordPtr& record,
     UpdateScoreRelatedFields(record, score2);
     return;
   }
-  // If both alleles are classified as GT=1/2, we use the GenotypeScore with the lower prediction probability, which is
-  // more conservative and has a lower chance of overestimating the variant quality.
+  // If both alleles are classified as GT=1/2, we use the PredictionScore with the lower prediction probability, which
+  // is more conservative and has a lower chance of overestimating the variant quality.
   UpdateScoreRelatedFields(record, score1.probability < score2.probability ? score1 : score2);
 }
 
 void ReconcileGermlineDiploidSingleRecord(const vec<VariantId>& vids,
                                           const vec<io::VcfRecordPtr>& in_records,
-                                          const vec<GenotypeScore>& ml_genotypes,
+                                          const vec<PredictionScore>& ml_genotypes,
                                           const vec<io::VcfRecordPtr>& alt_wildcard_records,
                                           vec<io::VcfRecordPtr>& out_records,
                                           std::optional<s64>& gt12_01_max_ref_pos,
@@ -219,7 +219,7 @@ void ReconcileGermlineDiploidSingleRecord(const vec<VariantId>& vids,
 
 void ReconcileGermlineDiploidTwoPassingGT12Records(const vec<VariantId>& vids,
                                                    const vec<io::VcfRecordPtr>& in_records,
-                                                   const vec<GenotypeScore>& ml_genotypes,
+                                                   const vec<PredictionScore>& ml_genotypes,
                                                    vec<io::VcfRecordPtr>& out_records,
                                                    std::optional<s64>& gt12_01_max_ref_pos,
                                                    const vec<size_t>& gt12_indexes,
@@ -257,7 +257,7 @@ void ReconcileGermlineDiploidTwoPassingGT12Records(const vec<VariantId>& vids,
 
 void ReconcileGermlineDiploidSinglePassingFromMultiple(const vec<VariantId>& vids,
                                                        const vec<io::VcfRecordPtr>& in_records,
-                                                       const vec<GenotypeScore>& ml_genotypes,
+                                                       const vec<PredictionScore>& ml_genotypes,
                                                        vec<io::VcfRecordPtr>& out_records,
                                                        std::optional<s64>& gt12_01_max_ref_pos,
                                                        const vec<size_t>& gt01_11_indexes) {
@@ -278,7 +278,7 @@ void ReconcileGermlineDiploidSinglePassingFromMultiple(const vec<VariantId>& vid
 
 void ReconcileGermlineDiploidTwoPassingMix(const vec<VariantId>& vids,
                                            const vec<io::VcfRecordPtr>& in_records,
-                                           const vec<GenotypeScore>& ml_genotypes,
+                                           const vec<PredictionScore>& ml_genotypes,
                                            vec<io::VcfRecordPtr>& out_records,
                                            std::optional<s64>& gt12_01_max_ref_pos,
                                            const vec<size_t>& gt01_12_indexes,
@@ -307,7 +307,7 @@ void ReconcileGermlineDiploidTwoPassingMix(const vec<VariantId>& vids,
 std::optional<s64> ReconcileGermlineDiploidRecords(const vec<VariantId>& vids,
                                                    const vec<io::VcfRecordPtr>& in_records,
                                                    const vec<io::VcfRecordPtr>& alt_wildcard_records,
-                                                   const vec<GenotypeScore>& ml_genotypes,
+                                                   const vec<PredictionScore>& ml_genotypes,
                                                    vec<io::VcfRecordPtr>& out_records,
                                                    const vec<io::InfoFieldMetadata>& info_metadata,
                                                    const vec<io::FormatFieldMetadata>& fmt_metadata) {
@@ -391,7 +391,7 @@ std::optional<s64> ReconcileGermlineDiploidRecords(const vec<VariantId>& vids,
 
 void ReconcileGermlineHaploidRecords(const vec<VariantId>& vids,
                                      const vec<io::VcfRecordPtr>& in_records,
-                                     const vec<GenotypeScore>& ml_genotypes,
+                                     const vec<PredictionScore>& ml_genotypes,
                                      vec<io::VcfRecordPtr>& out_records) {
   // Note that `out_records` is a vector for output VCF records for the region being processed in parallel.
   // Reconciled records will be appended to this vector.

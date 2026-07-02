@@ -1,9 +1,13 @@
-# Measuring Error Rate for SBX Duplex Data
+# Measuring Error Rate for SBX Duplex
 
 ## Overview
 
 This tutorial demonstrates how to measure empirical error rates in SBX duplex sequencing data using the `best` tool.
 The workflow compares sequencing results against NIST Genome in a Bottle truth data to calculate accurate quality scores and error metrics.
+
+{% hint style="info" %}
+For measuring error rate, [Alignment Metrics](../alignment_metrics/README.md) is the preferred tool. This tutorial uses `best` for compatibility with external truth-data workflows, but Alignment Metrics is recommended for routine SBX error-rate measurement.
+{% endhint %}
 
 {% stepper %}
 {% step %}

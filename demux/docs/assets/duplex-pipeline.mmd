@@ -1,0 +1,8 @@
+flowchart LR
+    A["① Gather input files\n(FASTQ / RDB)"]
+    --> B["② Demultiplex\n(locate hairpin, match SID)"]
+    --> C["③ Pairwise consensus\n(R1 + R2 → consensus + YC tag)"]
+    --> D["④ Trim adapters\n(remove endadapter sequences)"]
+    --> E["⑤ Filter reads\n(length, error rate, buffer size)"]
+    --> F["⑥ Write output\nper-sample FASTQ files"]
+    --> G["⑦ Calculate metrics\n(run & sample stats TSV)"]

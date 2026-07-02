@@ -1,8 +1,12 @@
 #include "rdb-2bit-utils.h"
 
-#include <cstring>
+#include <xoos/util/sequence-functions.h>
+
+#include <algorithm>
 #include <string>
 #include <vector>
+
+#include "sequence/encoding-constants.h"
 
 namespace xoos::demux {
 
@@ -25,13 +29,11 @@ void Reverse2BitOrder(u8* sequence, std::size_t sequence_length) {
 }
 
 constexpr std::vector<std::string> GenerateDnaDecodeTable() {
-  constexpr char kDNA[] = {'A', 'C', 'G', 'T'};
-
   std::vector<std::string> lookup_table(256);
   for (std::size_t i = 0; i < lookup_table.size(); ++i) {
     std::string decoded_bases;
-    for (int j = 0; j < 4; ++j) {
-      decoded_bases += kDNA[(i >> (2 * j)) & 0b11];
+    for (u32 j = 0; j < kBasesPerByte; ++j) {
+      decoded_bases += sequence::kDnaAlphabet[(i >> (kBitsPerEncodedBase * j)) & kBaseMask];
     }
     lookup_table[i] = decoded_bases;
   }
@@ -40,20 +42,18 @@ constexpr std::vector<std::string> GenerateDnaDecodeTable() {
 
 static const std::vector<std::string> kDnaLookupTable = GenerateDnaDecodeTable();
 
-void DecodeDnaBases(const u8* encoded, char* buffer, std::size_t length) {
+void DecodeDnaBases(const u8* const encoded, char* const buffer, const std::size_t length) {
   char* out = buffer;
-  for (std::size_t i = 0; i < length >> 2; ++i) {
-    uint8_t byte = encoded[i];
+  for (std::size_t i = 0; i < length >> kBitsPerEncodedBase; ++i) {
+    const auto byte = encoded[i];
     const std::string& decoded_bases = kDnaLookupTable[byte];
-    std::memcpy(out, decoded_bases.c_str(), decoded_bases.size());
-    out += decoded_bases.size();
+    out = std::copy_n(decoded_bases.c_str(), decoded_bases.size(), out);
   }
-  std::size_t remaining = length & 0b11;
+  const std::size_t remaining = length & kBaseMask;
   if (remaining != 0) {
-    uint8_t byte = encoded[length >> 2];
+    const auto byte = encoded[length >> kBitsPerEncodedBase];
     const std::string& decoded_bases = kDnaLookupTable[byte];
-    std::memcpy(out, decoded_bases.c_str(), remaining);
-    out += remaining;
+    std::copy_n(decoded_bases.c_str(), remaining, out);
   }
 }
 
@@ -63,8 +63,8 @@ constexpr std::vector<std::string> GenerateQualDecodeTable() {
   std::vector<std::string> lookup_table(256);
   for (int i = 0; i < 256; ++i) {
     std::string decoded_quals;
-    for (int j = 3; j >= 0; --j) {
-      decoded_quals += kQual[(i >> (2 * j)) & 0b11];
+    for (s32 j = kBasesPerByte - 1; j >= 0; --j) {
+      decoded_quals += kQual[(i >> (kBitsPerEncodedBase * static_cast<u32>(j))) & kBaseMask];
     }
     lookup_table[i] = decoded_quals;
   }
@@ -73,20 +73,18 @@ constexpr std::vector<std::string> GenerateQualDecodeTable() {
 
 static const std::vector<std::string> kQualLookupTable = GenerateQualDecodeTable();
 
-void DecodeQualScores(const u8* encoded, char* buffer, std::size_t length) {
+void DecodeQualScores(const u8* const encoded, char* const buffer, const std::size_t length) {
   char* out = buffer;
-  for (std::size_t i = 0; i < length >> 2; ++i) {
+  for (std::size_t i = 0; i < length >> kBitsPerEncodedBase; ++i) {
     uint8_t byte = encoded[i];
     const std::string& decoded_qual = kQualLookupTable[byte];
-    std::memcpy(out, decoded_qual.c_str(), decoded_qual.size());
-    out += decoded_qual.size();
+    out = std::copy_n(decoded_qual.c_str(), decoded_qual.size(), out);
   }
-  std::size_t remaining = length & 0b11;
+  const auto remaining = length & kBaseMask;
   if (remaining != 0) {
-    uint8_t byte = encoded[length >> 2];
+    const auto byte = encoded[length >> kBitsPerEncodedBase];
     const std::string& decoded_qual = kQualLookupTable[byte];
-    std::memcpy(out, decoded_qual.c_str(), remaining);
-    out += remaining;
+    std::copy_n(decoded_qual.c_str(), remaining, out);
   }
 }
 

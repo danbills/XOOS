@@ -27,8 +27,6 @@ std::vector<std::string> FilterVariant(const VariantId& vid,
                                        const UnifiedReferenceFeature& urf,
                                        const FilterSettings& settings) {
   std::vector<std::string> fail_reasons;
-  // TODO: Update the way filtering is done based on workflow/User profiles in future change
-  // TODO: value == threshold should not fail? Use `<` instead of `<=`?
   if (uvf.mapq_mean < settings.min_mapq) {
     fail_reasons.emplace_back(kFilteringMapQualityId);
   }
@@ -61,7 +59,6 @@ std::vector<std::string> FilterVariant(const VariantId& vid,
   }
   if (static_cast<f32>(uvf.duplex + uvf.nonduplex) / static_cast<f32>(urf.support + uvf.duplex + uvf.nonduplex) <
       settings.min_af_threshold) {
-    // TODO: check whether the AF denominator should be tallied for all ALT alleles at this position?
     // AF is too low
     fail_reasons.emplace_back(kFilteringAFId);
   }
@@ -88,7 +85,6 @@ std::vector<std::string> FilterPhasedVariant(const std::string& key,
                                              const u8 mapping_qual,
                                              const u8 base_qual) {
   std::vector<std::string> fail_reasons;
-  // TODO: Confirm if blocklist filtering needed here
   if (settings.blocklist.contains(key)) {
     fail_reasons.emplace_back(kFilteringBlocklistedId);
   }

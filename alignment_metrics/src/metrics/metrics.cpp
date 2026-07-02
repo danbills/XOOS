@@ -1,9 +1,12 @@
 #include "metrics/metrics.h"
 
+#include <filesystem>
+
 #include <htslib/hts.h>
 #include <htslib/sam.h>
 
 #include <xoos/histogram/histogram-summary.h>
+#include <xoos/io/alignment-reader.h>
 #include <xoos/io/htslib-util/htslib-ptr.h>
 #include <xoos/io/htslib-util/htslib-util.h>
 #include <xoos/io/htslib-util/read-util.h>
@@ -12,7 +15,6 @@
 
 #include "alignment-metrics-options.h"
 #include "core/alignment.h"
-#include "io/alignment-reader.h"
 #include "io/metrics-default-filenames.h"
 #include "metadata/alignment-metadata.h"
 #include "metadata/dataset-metadata.h"
@@ -52,13 +54,13 @@ CoverageMetrics::CoverageMetrics(const AlignmentMetricsOptions& options, const D
                                              options.coverage_cutoff,
                                              options.summary_stats_percentiles,
                                              dataset_metadata,
-                                             !options.enable_te_metrics)),
+                                             options.bed_input.empty())),
       hp_coverage_histograms(options.calculate_hp_metrics
                                  ? std::make_optional(CoverageHistograms(options.max_coverage_bin,
                                                                          options.coverage_cutoff,
                                                                          options.summary_stats_percentiles,
                                                                          dataset_metadata,
-                                                                         !options.enable_te_metrics))
+                                                                         options.bed_input.empty()))
                                  : std::nullopt),
       coverage_uniformity_metrics(options.enable_te_metrics ? std::make_optional(CoverageUniformityMetrics())
                                                             : std::nullopt) {
@@ -348,12 +350,12 @@ void CoverageMetrics::AddHistogramData(const u32 all_depth,
  *
  * Creates output directory structure (accuracy/, coverage/, read_metrics/) and writes each
  * metric category to separate TSV files. Only writes metrics that were enabled and populated
- * during processing. Comments header is included in all output files for metadata tracking.
+ * during processing. RocheCommandLine metadata is included in all output files.
  *
  * @param output_dir Path to the output directory where metric files will be written
- * @param comments Header comments to include in all TSV files (e.g., command line, timestamps)
+ * @param command_line_info Tool name, version, and command line for output file metadata
  */
-void Metrics::WriteMetrics(const fs::path& output_dir, const io::Comments& comments) const {
+void Metrics::WriteMetrics(const fs::path& output_dir, const io::CommandLineInfo& command_line_info) const {
   const fs::path absolute_out_dir = fs::absolute(output_dir);
   // Create output directories if it doesn't exist
   // These calls to `create_directories` will not throw even if the directories already exist and will simply return
@@ -362,44 +364,44 @@ void Metrics::WriteMetrics(const fs::path& output_dir, const io::Comments& comme
   if (accuracy_metrics.has_value()) {
     create_directories(absolute_out_dir / kDefaultAccuracyDir);
     accuracy_metrics->errors_by_substitution_type.WriteTsv(
-        output_dir / kDefaultAccuracyDir / kDefaultErrorBySubstitutionType, comments);
+        output_dir / kDefaultAccuracyDir / kDefaultErrorBySubstitutionType, command_line_info);
     accuracy_metrics->base_level_accuracy_summary.WriteTsv(
-        output_dir / kDefaultAccuracyDir / kDefaultBaseLevelAccuracySummary, comments);
-    accuracy_metrics->qscore_stats.WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultQscoreStats, comments);
+        output_dir / kDefaultAccuracyDir / kDefaultBaseLevelAccuracySummary, command_line_info);
+    accuracy_metrics->qscore_stats.WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultQscoreStats, command_line_info);
     if (accuracy_metrics->errors_by_cluster_size.has_value()) {
       accuracy_metrics->errors_by_cluster_size->WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultErrorByClusterSize,
-                                                         comments);
+                                                         command_line_info);
     }
     if (accuracy_metrics->errors_by_read_type.has_value()) {
       accuracy_metrics->errors_by_read_type->WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultErrorByReadType,
-                                                      comments);
+                                                      command_line_info);
     }
     if (accuracy_metrics->hp_stats.has_value()) {
-      accuracy_metrics->hp_stats->WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultHpErrors, comments);
+      accuracy_metrics->hp_stats->WriteTsv(output_dir / kDefaultAccuracyDir / kDefaultHpErrors, command_line_info);
     }
   }
   if (coverage_metrics.has_value()) {
     create_directories(absolute_out_dir / kDefaultCoverageDir);
     coverage_metrics->coverage_histograms.WriteTsv(output_dir / kDefaultCoverageDir / kDefaultCoverageHistograms,
-                                                   comments);
+                                                   command_line_info);
     coverage_metrics->coverage_histograms.WriteCoverageStatsTsv(
-        output_dir / kDefaultCoverageDir / kDefaultCoverageStats, comments);
+        output_dir / kDefaultCoverageDir / kDefaultCoverageStats, command_line_info);
     coverage_metrics->coverage_histograms.WriteCoverageDistributionSummaryTsv(
-        output_dir / kDefaultCoverageDir / kDefaultCoverageDistributionSummary, comments);
+        output_dir / kDefaultCoverageDir / kDefaultCoverageDistributionSummary, command_line_info);
     if (coverage_metrics->hp_coverage_histograms.has_value()) {
       coverage_metrics->hp_coverage_histograms->WriteTsv(
-          output_dir / kDefaultCoverageDir / kDefaultHpCoverageHistograms, comments);
+          output_dir / kDefaultCoverageDir / kDefaultHpCoverageHistograms, command_line_info);
       coverage_metrics->hp_coverage_histograms->WriteCoverageStatsTsv(
-          output_dir / kDefaultCoverageDir / kDefaultHpCoverageStats, comments);
+          output_dir / kDefaultCoverageDir / kDefaultHpCoverageStats, command_line_info);
       coverage_metrics->hp_coverage_histograms->WriteCoverageDistributionSummaryTsv(
-          output_dir / kDefaultCoverageDir / kDefaultHpCoverageDistributionSummary, comments);
+          output_dir / kDefaultCoverageDir / kDefaultHpCoverageDistributionSummary, command_line_info);
     }
     if (coverage_metrics->coverage_uniformity_metrics.has_value()) {
       coverage_metrics->coverage_uniformity_metrics->WriteMeanCoverageHistogram(
-          output_dir / kDefaultCoverageDir / kDefaultMeanCoverageHistogram, comments);
+          output_dir / kDefaultCoverageDir / kDefaultMeanCoverageHistogram, command_line_info);
       coverage_metrics->coverage_uniformity_metrics->WriteCoverageUniformitySummaryTsv(
           output_dir / kDefaultCoverageDir / kDefaultCoverageUniformitySummary,
-          comments,
+          command_line_info,
           coverage_metrics->coverage_histograms.filtered_coverage_histogram);
     }
   }
@@ -407,21 +409,22 @@ void Metrics::WriteMetrics(const fs::path& output_dir, const io::Comments& comme
     create_directories(absolute_out_dir / kDefaultReadMetricsDir);
     if (read_metrics->read_counts_by_cluster_size.has_value()) {
       read_metrics->read_counts_by_cluster_size->WriteTsv(
-          output_dir / kDefaultReadMetricsDir / kDefaultReadCountsByClusterSize, comments);
+          output_dir / kDefaultReadMetricsDir / kDefaultReadCountsByClusterSize, command_line_info);
     }
     if (read_metrics->te_read_metrics.has_value()) {
-      read_metrics->te_read_metrics->WriteTsv(output_dir / kDefaultReadMetricsDir / kDefaultTeReadMetrics, comments);
+      read_metrics->te_read_metrics->WriteTsv(output_dir / kDefaultReadMetricsDir / kDefaultTeReadMetrics,
+                                              command_line_info);
     }
     read_metrics->read_metrics_summary.WriteTsv(output_dir / kDefaultReadMetricsDir / kDefaultReadMetricsSummary,
-                                                comments);
+                                                command_line_info);
     read_metrics->read_length_histograms.WriteTsv(output_dir / kDefaultReadMetricsDir / kDefaultReadLengthHistograms,
-                                                  comments);
+                                                  command_line_info);
     read_metrics->read_length_histograms.WriteSummaryTsv(
-        output_dir / kDefaultReadMetricsDir / kDefaultReadLengthSummary, comments);
+        output_dir / kDefaultReadMetricsDir / kDefaultReadLengthSummary, command_line_info);
   }
 }
 
-void ReadMetrics::UpdateUnmappedReadMetrics(const AlignmentReader& alignment_reader,
+void ReadMetrics::UpdateUnmappedReadMetrics(const io::AlignmentReader& alignment_reader,
                                             const bool passed_filter,
                                             const u16 trim) {
   if (_unmapped_metrics_updated) {

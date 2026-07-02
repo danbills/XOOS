@@ -55,14 +55,14 @@ struct ReadLengthHistograms {
    * the output will contain one column for the read length distribution for all reads,
    * one column for the partial read length distribution, and one column for the full read length distribution.
    */
-  void WriteTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
   /**
    * Output a summary of the read length statistics to a TSV file.
    *
    * The summary statistics include: min, max, mean, median, and
    * a list of percentiles as specified by the user when creating the object.
    */
-  void WriteSummaryTsv(const fs::path& output_path, const io::Comments& comments) const;
+  void WriteSummaryTsv(const fs::path& output_path, const io::CommandLineInfo& command_line_info) const;
 
   ReadLengthHistograms& operator+=(const ReadLengthHistograms& other) {
     post_filter_partial_read_length_histogram += other.post_filter_partial_read_length_histogram;

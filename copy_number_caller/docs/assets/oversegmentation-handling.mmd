@@ -1,0 +1,13 @@
+graph TD
+    %% Node Definitions
+    Q2{Greater than<br>--max-segments<br>-for-undoing?}
+
+    %% Logic Flow
+    Q2 -- True --> Increase[Increase<br>--initial-segment-undoing-factor by --segment-undoing-increment]
+    Q2 -- False --> Continue
+
+    Increase -- Segment undo --> Q2
+
+    %% Styling
+    style Q2 fill:#c6e2ff,stroke:#333
+    style Increase fill:#f5bca9,stroke:#333

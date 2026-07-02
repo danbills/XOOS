@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant EnvJSON as Env config JSON
+    participant CLI as xoos run CLI
+    participant NF as Nextflow
+
+    EnvJSON->>CLI: profiles: ["docker", "gpu"]
+    Note over CLI: User passes: -profile germline_wgs_duplex
+    CLI->>CLI: Merge & deduplicate
+    CLI->>NF: -profile docker,gpu,germline_wgs_duplex

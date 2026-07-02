@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 145" width="720" height="145" style="background-color: transparent;">
+  <style>
+    .label { font-family: "trebuchet ms", verdana, arial, sans-serif; font-size: 13px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .orient { font-family: "trebuchet ms", verdana, arial, sans-serif; font-size: 13px; fill: #999; text-anchor: middle; dominant-baseline: central; }
+    .row-label { font-family: "trebuchet ms", verdana, arial, sans-serif; font-size: 11px; fill: #555; font-style: italic; dominant-baseline: central; }
+    .legend { font-family: "trebuchet ms", verdana, sans-serif; font-size: 10px; fill: #555; dominant-baseline: central; }
+  </style>
+
+  <!-- Row 1: SBX-S without UMI -->
+  <text x="105" y="28" class="row-label" text-anchor="end">without UMI</text>
+
+  <text x="148" y="28" class="orient">5&#x2032;</text>
+
+  <rect x="160" y="12" width="80" height="32" rx="2" fill="#f5d9a8" stroke="#c4963c" stroke-width="1"/>
+  <text x="200" y="28" class="label">start</text>
+
+  <rect x="244" y="12" width="50" height="32" rx="2" fill="#c8dab5" stroke="#7a9a5a" stroke-width="1"/>
+  <text x="269" y="28" class="label">SID</text>
+
+  <rect x="298" y="12" width="160" height="32" rx="2" fill="#a8d8ea" stroke="#4a90c4" stroke-width="1"/>
+  <text x="378" y="28" class="label">insert</text>
+
+  <rect x="462" y="12" width="50" height="32" rx="2" fill="#c8dab5" stroke="#7a9a5a" stroke-width="1"/>
+  <text x="487" y="28" class="label">SID</text>
+
+  <rect x="516" y="12" width="80" height="32" rx="2" fill="#f5d9a8" stroke="#c4963c" stroke-width="1"/>
+  <text x="556" y="28" class="label">end</text>
+
+  <text x="608" y="28" class="orient">3&#x2032;</text>
+
+  <!-- Row 2: SBX-S with UMI -->
+  <text x="105" y="80" class="row-label" text-anchor="end">with UMI</text>
+
+  <text x="118" y="80" class="orient">5&#x2032;</text>
+
+  <rect x="130" y="64" width="70" height="32" rx="2" fill="#f5d9a8" stroke="#c4963c" stroke-width="1"/>
+  <text x="165" y="80" class="label">start</text>
+
+  <rect x="204" y="64" width="46" height="32" rx="2" fill="#c8dab5" stroke="#7a9a5a" stroke-width="1"/>
+  <text x="227" y="80" class="label">SID</text>
+
+  <rect x="254" y="64" width="46" height="32" rx="2" fill="#ECECFF" stroke="#9370DB" stroke-width="1"/>
+  <text x="277" y="80" class="label">UMI</text>
+
+  <rect x="304" y="64" width="140" height="32" rx="2" fill="#a8d8ea" stroke="#4a90c4" stroke-width="1"/>
+  <text x="374" y="80" class="label">insert</text>
+
+  <rect x="448" y="64" width="46" height="32" rx="2" fill="#ECECFF" stroke="#9370DB" stroke-width="1"/>
+  <text x="471" y="80" class="label">UMI</text>
+
+  <rect x="498" y="64" width="46" height="32" rx="2" fill="#c8dab5" stroke="#7a9a5a" stroke-width="1"/>
+  <text x="521" y="80" class="label">SID</text>
+
+  <rect x="548" y="64" width="70" height="32" rx="2" fill="#f5d9a8" stroke="#c4963c" stroke-width="1"/>
+  <text x="583" y="80" class="label">end</text>
+
+  <text x="630" y="80" class="orient">3&#x2032;</text>
+
+  <!-- Legend -->
+  <rect x="130" y="118" width="12" height="10" rx="1" fill="#a8d8ea" stroke="#4a90c4" stroke-width="0.8"/>
+  <text x="148" y="124" class="legend" text-anchor="start">DNA insert</text>
+  <rect x="230" y="118" width="12" height="10" rx="1" fill="#c8dab5" stroke="#7a9a5a" stroke-width="0.8"/>
+  <text x="248" y="124" class="legend" text-anchor="start">Sample ID</text>
+  <rect x="330" y="118" width="12" height="10" rx="1" fill="#f5d9a8" stroke="#c4963c" stroke-width="0.8"/>
+  <text x="348" y="124" class="legend" text-anchor="start">Adapter</text>
+  <rect x="420" y="118" width="12" height="10" rx="1" fill="#ECECFF" stroke="#9370DB" stroke-width="0.8"/>
+  <text x="438" y="124" class="legend" text-anchor="start">UMI</text>
+</svg>

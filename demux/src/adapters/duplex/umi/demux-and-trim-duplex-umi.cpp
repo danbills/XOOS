@@ -6,10 +6,8 @@ namespace xoos::demux {
 
 // Helper function to create a TrimDuplexUmi for UMI processing
 static TrimDuplexUmi CreateTrimUmi(const LutBundleDuplexUmi& lut_bundle) {
-  const auto& loop_sequence = lut_bundle.LoopSequence();
-  return TrimDuplexUmi{lut_bundle.Sid5pMatcher(),        lut_bundle.Sid3pMatcher(),  lut_bundle.StartSequenceMatcher(),
-                       lut_bundle.StopSequenceMatcher(), lut_bundle.Stem5pMatcher(), lut_bundle.Stem3pMatcher(),
-                       lut_bundle.Umi5pMatcher(),        lut_bundle.Umi3pMatcher(),  loop_sequence};
+  return TrimDuplexUmi{lut_bundle.Runway5pMatcher(), lut_bundle.StartSequenceMatcher(), lut_bundle.Stem5pMatcher(),
+                       lut_bundle.Stem3pMatcher(),   lut_bundle.Umi5pMatcher(),         lut_bundle.Umi3pMatcher()};
 }
 
 DemuxAndTrimDuplexUmi::DemuxAndTrimDuplexUmi(const LutBundleDuplexUmi& lut_bundle)

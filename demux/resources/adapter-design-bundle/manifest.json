@@ -8,7 +8,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "duplex/runway-5p.fa",
+            "sequence": "AACAAT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -32,7 +32,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/start.fa",
+            "sequence": "GCACCTGACGTACGCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -44,7 +44,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "duplex/loop.fa",
+            "sequence": "ATGTATG",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -58,7 +58,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/end.fa",
+            "sequence": "AGCGTACGTCAGGTGCA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -88,7 +88,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "duplex/runway-5p.fa",
+            "sequence": "AACAAT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -112,7 +112,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/start.fa",
+            "sequence": "GCACCTGACGTACGCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -124,7 +124,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "sbx-fast/loop.fa",
+            "sequence": "CATACAT",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -138,7 +138,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/end.fa",
+            "sequence": "AGCGTACGTCAGGTGCA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -168,7 +168,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "duplex/runway-5p.fa",
+            "sequence": "AACAAT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -192,7 +192,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/start.fa",
+            "sequence": "GCACCTGACGTACGCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -204,7 +204,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "duplex/loop.fa",
+            "sequence": "ATGTATG",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -218,7 +218,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "duplex/end.fa",
+            "sequence": "AGCGTACGTCAGGTGCA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -248,7 +248,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/runway-5p.fa",
+            "sequence": "CAACAA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -272,7 +272,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -296,7 +296,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -308,7 +308,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "duplex/loop.fa",
+            "sequence": "ATGTATG",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -322,7 +322,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "reverse_complement",
             "max_edit_distance": 2
           },
@@ -358,7 +358,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-3p.fa",
+            "sequence": "AGATCGGAAGAGCGTCGTGTAGG",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -376,7 +376,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/runway-5p.fa",
+            "sequence": "CAACAA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -400,7 +400,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -412,7 +412,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -424,7 +424,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "duplex/loop.fa",
+            "sequence": "ATGTATG",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -438,7 +438,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "reverse_complement",
             "max_edit_distance": 2
           },
@@ -462,7 +462,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-3p.fa",
+            "sequence": "AGATCGGAAGAGCGTCGTGTAGG",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -480,7 +480,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/runway-5p.fa",
+            "sequence": "CAACAA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -504,7 +504,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -528,7 +528,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -540,7 +540,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "I2X_HPU_v0.11/loop.fa",
+            "sequence": "AGATCTCGGTGATGTATGCACCGAGATCT",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -554,7 +554,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "reverse_complement",
             "max_edit_distance": 2
           },
@@ -590,7 +590,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPU_v0.11/stem-3p.fa",
+            "sequence": "AGATCGGAAGAGCGTCGTGTAGGGAAAGA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -608,7 +608,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/runway-5p.fa",
+            "sequence": "CAACAA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -632,7 +632,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -644,7 +644,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -656,7 +656,7 @@
         {
           "type": "loop",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/loop.fa",
+            "sequence": "AGATCTCGGTGATGTATGCACCGAGATCT",
             "transform": "none",
             "max_edit_distance": 0
           },
@@ -670,7 +670,7 @@
         {
           "type": "anchor",
           "lut": {
-            "sequences": "I2X_HPSID_v0.01/stem-5p.fa",
+            "sequence": "TAGTTCAGACGTGTGCTCTTCCGATCT",
             "transform": "reverse_complement",
             "max_edit_distance": 2
           },
@@ -694,7 +694,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "I2X_HPU_v0.11/stem-3p.fa",
+            "sequence": "AGATCGGAAGAGCGTCGTGTAGGGAAAGA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -706,25 +706,15 @@
       ]
     },
     {
-      "name": "YSU-SL",
-      "type": "YSU-SL",
+      "name": "YSU",
+      "type": "YSU",
+      "bait_5p": "GAGTCTTTT",
+      "bait_3p": "TTTGTCGT",
       "adapter_5p": [
-        {
-          "type": "runway",
-          "lut": {
-            "sequences": "ysu-sl/runway-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 0,
-            "max_wiggle_right": 2
-          }
-        },
         {
           "type": "sid",
           "lut": {
-            "sequences": "ysu-sl/sid-5p.fa",
+            "sequences": "ysu/sid-5p.fa",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -734,23 +724,13 @@
           }
         },
         {
-          "type": "stem",
-          "lut": {
-            "sequences": "ysu-sl/stem-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 2
-          }
-        },
-        {
           "type": "umi",
           "lut": {
-            "sequences": "ysu-sl/umi-5p.fa",
+            "sequences": "ysu/umi-5p.fa",
             "transform": "none",
-            "max_edit_distance": 1
+            "max_edit_distance": 1,
+            "prefix": "CG",
+            "suffix": "GAGTT"
           },
           "search": {
             "max_wiggle_left": 2,
@@ -762,9 +742,11 @@
         {
           "type": "umi",
           "lut": {
-            "sequences": "ysu-sl/umi-5p.fa",
+            "sequences": "ysu/umi-5p.fa",
             "transform": "reverse_complement",
-            "max_edit_distance": 1
+            "max_edit_distance": 1,
+            "prefix": "CG",
+            "suffix": "GAGTT"
           },
           "search": {
             "max_wiggle_left": 6,
@@ -772,113 +754,9 @@
           }
         },
         {
-          "type": "stem",
-          "lut": {
-            "sequences": "ysu-sl/stem-3p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 2
-          }
-        },
-        {
           "type": "sid",
           "lut": {
-            "sequences": "ysu-sl/sid-5p.fa",
-            "transform": "reverse_complement",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 32,
-            "max_wiggle_right": 2
-          }
-        }
-      ]
-    },
-    {
-      "name": "YSU-TE",
-      "type": "YSU-TE",
-      "adapter_5p": [
-        {
-          "type": "runway",
-          "lut": {
-            "sequences": "ysu-te/runway-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 0,
-            "max_wiggle_right": 2
-          }
-        },
-        {
-          "type": "sid",
-          "lut": {
-            "sequences": "ysu-te/sid-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 17
-          }
-        },
-        {
-          "type": "stem",
-          "lut": {
-            "sequences": "ysu-te/stem-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 2
-          }
-        },
-        {
-          "type": "umi",
-          "lut": {
-            "sequences": "ysu-te/umi-5p.fa",
-            "transform": "none",
-            "max_edit_distance": 1
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 6
-          }
-        }
-      ],
-      "adapter_3p": [
-        {
-          "type": "umi",
-          "lut": {
-            "sequences": "ysu-te/umi-5p.fa",
-            "transform": "reverse_complement",
-            "max_edit_distance": 1
-          },
-          "search": {
-            "max_wiggle_left": 6,
-            "max_wiggle_right": 2
-          }
-        },
-        {
-          "type": "stem",
-          "lut": {
-            "sequences": "ysu-te/stem-3p.fa",
-            "transform": "none",
-            "max_edit_distance": 2
-          },
-          "search": {
-            "max_wiggle_left": 2,
-            "max_wiggle_right": 2
-          }
-        },
-        {
-          "type": "sid",
-          "lut": {
-            "sequences": "ysu-te/sid-5p.fa",
+            "sequences": "ysu/sid-5p.fa",
             "transform": "reverse_complement",
             "max_edit_distance": 2
           },
@@ -896,7 +774,7 @@
         {
           "type": "runway",
           "lut": {
-            "sequences": "ysu-te/runway-5p.fa",
+            "sequence": "CAACAA",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -910,7 +788,8 @@
           "lut": {
             "sequences": "ys/sid-5p.fa",
             "transform": "none",
-            "max_edit_distance": 2
+            "max_edit_distance": 2,
+            "suffix": "GCGT"
           },
           "search": {
             "max_wiggle_left": 2,
@@ -920,7 +799,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "ys/stem-5p.fa",
+            "sequence": "GAGTCTTTT",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -934,7 +813,7 @@
         {
           "type": "stem",
           "lut": {
-            "sequences": "ys/stem-3p.fa",
+            "sequence": "TTTGTCGTGTAGG",
             "transform": "none",
             "max_edit_distance": 2
           },
@@ -948,14 +827,139 @@
           "lut": {
             "sequences": "ys/sid-5p.fa",
             "transform": "reverse_complement",
-            "max_edit_distance": 2
+            "max_edit_distance": 2,
+            "suffix": "GCGT"
           },
           "search": {
             "max_wiggle_left": 32,
             "max_wiggle_right": 2
           }
         }
+      ],
+      "bait_3p": "TTTGTCGTGTAGG"
+    },
+    {
+      "name": "YS-NEW",
+      "type": "simplex",
+      "adapter_5p": [
+        {
+          "type": "anchor",
+          "lut": {
+            "sequence": "CAACAAGAGTCTTTT",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 0,
+            "max_wiggle_right": 2
+          }
+        },
+        {
+          "type": "sid",
+          "lut": {
+            "sequences": "ys-new/sid.fa",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 2,
+            "max_wiggle_right": 37
+          }
+        },
+        {
+          "type": "stem",
+          "lut": {
+            "sequence": "GCGT",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 2,
+            "max_wiggle_right": 2
+          }
+        }
+      ],
+      "adapter_3p": [
+        {
+          "type": "stem",
+          "lut": {
+            "sequence": "ACGC",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 2,
+            "max_wiggle_right": 2
+          }
+        },
+        {
+          "type": "sid",
+          "lut": {
+            "sequences": "ys-new/sid.fa",
+            "transform": "reverse_complement",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 37,
+            "max_wiggle_right": 2
+          }
+        },
+        {
+          "type": "anchor",
+          "lut": {
+            "sequence": "TTTGTCGTGTAGGTG",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 3,
+            "max_wiggle_right": 3
+          }
+        }
       ]
+    },
+    {
+      "name": "SIMPLEX-10X",
+      "type": "simplex-10x",
+      "adapter_5p": [
+        {
+          "type": "anchor",
+          "lut": {
+            "sequence": "CAACAA",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 0,
+            "max_wiggle_right": 2
+          }
+        },
+        {
+          "type": "sid",
+          "lut": {
+            "sequences": "ys-new/sid.fa",
+            "transform": "none",
+            "max_edit_distance": 2
+          },
+          "search": {
+            "max_wiggle_left": 2,
+            "max_wiggle_right": 37
+          }
+        },
+        {
+          "type": "stem",
+          "lut": {
+            "sequence": "CTACACGACACTCTTCCGATCT",
+            "transform": "none",
+            "max_edit_distance": 0
+          },
+          "search": {
+            "max_wiggle_left": 2,
+            "max_wiggle_right": 2
+          }
+        }
+      ],
+      "adapter_3p": []
     }
   ]
 }

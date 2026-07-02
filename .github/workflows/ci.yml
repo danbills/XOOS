@@ -14,11 +14,24 @@ jobs:
     strategy:
       matrix:
         module:
-          - small_variant_caller
-          - pangenome_consensus_caller
-          - demux
-          - read_collapser
-          - alignment_metrics
+          - id: small_variant_caller
+            name: Small Variant Caller
+            license: LicenseRef-XOOS-Public-License-1.0
+          - id: pangenome_consensus_caller
+            name: Pangenome Consensus Caller
+            license: LicenseRef-XOOS-Public-License-1.0
+          - id: demux
+            name: Demux
+            license: LicenseRef-XOOS-Public-License-1.0
+          - id: read_collapser
+            name: Read Collapser
+            license: LicenseRef-XOOS-Public-License-1.0
+          - id: alignment_metrics
+            name: Alignment Metrics
+            license: LicenseRef-XOOS-Public-License-1.0
+          - id: copy_number_caller
+            name: Copy Number Caller
+            license: LicenseRef-XOOS-Public-License-1.0
     permissions:
       contents: read
       packages: write
@@ -33,11 +46,14 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.module }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.module.id }}
           tags: |
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=XOOS ${{ matrix.module.name }}
+            org.opencontainers.image.licenses=${{ matrix.module.license }}
       - name: Log in to container registry
         uses: docker/login-action@v4
         with:
@@ -47,7 +63,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
-          context: ${{ matrix.module }}
+          context: ${{ matrix.module.id }}
           build-contexts: |
             common=common
             vendor=vendor
