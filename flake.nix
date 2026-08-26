@@ -1,5 +1,5 @@
 {
-  description = "XOOS: SBX Optimized Open Source secondary genomics analysis with CUDA acceleration";
+  description = "XOOS: High-Performance CUDA-Accelerated Secondary Genomics Pipeline for NVIDIA Blackwell (SM120) & CUDA 13.x";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -7,7 +7,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -15,8 +15,9 @@
           config.cudaSupport = true;
         };
 
-        xoosDemuxPkg = pkgs.stdenv.mkDerivation {
-          pname = "xoos-demux-cuda";
+        # Base derivation for XOOS CUDA components
+        mkXoosCudaPackage = { pname, subDir, cmakeExtraFlags ? [] }: pkgs.stdenv.mkDerivation {
+          inherit pname;
           version = "1.0.0";
           src = ./.;
 
@@ -28,6 +29,7 @@
           ];
 
           buildInputs = [
+            pkgs.cudaPackages.cuda_cudart
             pkgs.zlib
             pkgs.zstd
             pkgs.boost
@@ -40,21 +42,61 @@
           cmakeFlags = [
             "-DCMAKE_BUILD_TYPE=Release"
             "-DENABLE_CUDA=ON"
+            "-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86"
             "-DSTATIC_LINK_DISABLE=ON"
             "-DCODE_COVERAGE_ENABLE=OFF"
-          ];
+          ] ++ cmakeExtraFlags;
         };
 
-        dockerImg = import ./nix/docker-image.nix {
+        xoosDemuxPkg = mkXoosCudaPackage {
+          pname = "xoos-demux-cuda";
+          subDir = "demux";
+        };
+
+        xoosAlignerPkg = mkXoosCudaPackage {
+          pname = "xoos-aligner-cuda";
+          subDir = "aligner";
+        };
+
+        # Layered Docker Images
+        demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
-          xoosDemuxPackage = xoosDemuxPkg;
+          package = xoosDemuxPkg;
+          imageName = "roche-axelios/xoos-demux-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/demux";
+        };
+
+        alignerDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosAlignerPkg;
+          imageName = "roche-axelios/xoos-aligner-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/aligner_cuda_bench";
+        };
+
+        unifiedDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosDemuxPkg;
+          imageName = "roche-axelios/xoos-cuda-all";
+          imageTag = "latest";
+          entrypointBinary = "/bin/demux";
         };
 
       in {
         packages = {
           default = xoosDemuxPkg;
           demux = xoosDemuxPkg;
-          docker = dockerImg;
+          aligner = xoosAlignerPkg;
+          
+          # Container outputs
+          docker-demux = demuxDocker.layered;
+          docker-aligner = alignerDocker.layered;
+          docker-all = unifiedDocker.layered;
+          
+          stream-docker-demux = demuxDocker.streamed;
+          stream-docker-aligner = alignerDocker.streamed;
+          stream-docker-all = unifiedDocker.streamed;
         };
 
         devShells.default = pkgs.mkShell {
@@ -67,17 +109,19 @@
             gdb
             cudaPackages.cudatoolkit
             cudaPackages.cuda_nvcc
+            cudaPackages.cuda_cudart
             cudaPackages.nsight_systems
             cudaPackages.nsight_compute
             zlib
             zstd
             boost
+            xxHash
           ];
 
           shellHook = ''
             export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
             export PATH=${pkgs.cudaPackages.cuda_nvcc}/bin:$PATH
-            echo "🚀 XOOS CUDA DevShell Activated (Blackwell SM120 / CUDA 13.x)"
+            echo "🚀 XOOS CUDA 13.x DevShell Activated (Blackwell SM120 Target)"
           '';
         };
       }
