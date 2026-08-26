@@ -36,3 +36,25 @@ target_link_xoos_libraries(demux_strand_index
         io
         util
 )
+
+if (CMAKE_CUDA_COMPILER)
+    add_default_executable(demux_cuda_bench
+            demux-cuda-bench.cpp
+    )
+    target_link_libraries(demux_cuda_bench
+            PRIVATE
+            demux_core
+    )
+    target_link_xoos_libraries(demux_cuda_bench
+            PRIVATE
+            cli
+            concurrent
+            enum
+            log
+            io
+            util
+            histogram
+            vfs
+    )
+endif ()
+
