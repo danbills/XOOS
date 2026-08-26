@@ -39,7 +39,7 @@ let
       # High-performance compression & hashing
       pkgs.zlib
       pkgs.zstd
-      pkgs.xxHash
+      pkgs.xxhash
 
       # Target XOOS Package
       package

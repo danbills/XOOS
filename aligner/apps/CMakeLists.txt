@@ -10,13 +10,5 @@ if (CMAKE_CUDA_COMPILER)
         PRIVATE
         aligner_core
     )
-    target_link_xoos_libraries(aligner_cuda_bench
-        PRIVATE
-        util
-        enum
-        cli
-        concurrent
-        log
-        io
-    )
 endif ()
+

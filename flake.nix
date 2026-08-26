@@ -36,16 +36,23 @@
             pkgs.nlohmann_json
             pkgs.fmt
             pkgs.spdlog
-            pkgs.xxHash
+            pkgs.xxhash
           ];
 
           cmakeFlags = [
+            "-S" "../${subDir}"
             "-DCMAKE_BUILD_TYPE=Release"
             "-DENABLE_CUDA=ON"
+            "-DLINT_ENABLE=OFF"
             "-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86"
             "-DSTATIC_LINK_DISABLE=ON"
             "-DCODE_COVERAGE_ENABLE=OFF"
           ] ++ cmakeExtraFlags;
+
+          installPhase = ''
+            mkdir -p $out/bin
+            find . -type f -executable -exec cp {} $out/bin/ \; 2>/dev/null || true
+          '';
         };
 
         xoosDemuxPkg = mkXoosCudaPackage {

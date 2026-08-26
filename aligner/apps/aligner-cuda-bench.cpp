@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
     std::cout << std::left << std::setw(28) << "GPU RTX 5090 (Kernel)"
               << std::right << std::setw(14) << std::fixed << std::setprecision(2) << gpu_stats.total_time_ms
               << std::setw(22) << std::setprecision(0) << gpu_stats.throughput_reads_per_sec
-              << std::setw(11) << std::setprecision(1) << speedup_vs_1t << "x" << std::endl;
+              << std::setw(11) << std::setprecision(1) << speedup_vs_1t << "x (" << speedup_vs_mt << "x vs MT)" << std::endl;
 
     std::cout << std::left << std::setw(28) << "GPU RTX 5090 (End-to-End)"
               << std::right << std::setw(14) << std::fixed << std::setprecision(2) << gpu_e2e_ms
