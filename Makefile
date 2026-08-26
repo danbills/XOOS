@@ -51,7 +51,7 @@ demux:
 	$(NIX_BIN) build .#demux --print-build-logs
 
 # ----------------------------------------------------------------------------
-# Benchmarking Targets
+# Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
 
 bench-aligner: aligner
@@ -61,6 +61,14 @@ bench-aligner: aligner
 bench-demux: demux
 	@echo ">>> Executing Native CUDA Demux Benchmark..."
 	./result/bin/demux_cuda_bench 500000
+
+profile-aligner: aligner
+	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
+	nsys profile --stats=true ./result/bin/aligner_cuda_bench 500000
+
+ncu-aligner: aligner
+	@echo ">>> Profiling CUDA Aligner Kernels with Nsight Compute (ncu)..."
+	ncu --set full ./result/bin/aligner_cuda_bench 100000
 
 # ----------------------------------------------------------------------------
 # Layered Container Targets
