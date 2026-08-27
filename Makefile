@@ -58,6 +58,10 @@ metrics:
 	@echo ">>> Building CUDA Alignment Metrics with Nix Flake..."
 	$(NIX_BIN) build .#metrics --print-build-logs
 
+svc:
+	@echo ">>> Building CUDA Small Variant Caller with Nix Flake..."
+	$(NIX_BIN) build .#svc --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -77,6 +81,10 @@ bench-read-collapser: read-collapser
 bench-metrics: metrics
 	@echo ">>> Executing Native CUDA Alignment Metrics Benchmark..."
 	./result/bin/alignment_metrics_cuda_bench 1000000
+
+bench-svc: svc
+	@echo ">>> Executing Native CUDA Small Variant Caller Benchmark..."
+	./result/bin/small_variant_caller_cuda_bench 100000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -106,6 +114,10 @@ docker-metrics:
 	@echo ">>> Building Layered OCI Container for Alignment Metrics..."
 	$(NIX_BIN) build .#docker-metrics --print-build-logs
 
+docker-svc:
+	@echo ">>> Building Layered OCI Container for Small Variant Caller..."
+	$(NIX_BIN) build .#docker-svc --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -126,6 +138,10 @@ stream-metrics:
 	@echo ">>> Streaming Alignment Metrics Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-metrics | $(PODMAN_BIN) load
 
+stream-svc:
+	@echo ">>> Streaming Small Variant Caller Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-svc | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -141,6 +157,10 @@ run-read-collapser: stream-read-collapser
 run-metrics: stream-metrics
 	@echo ">>> Running Containerized CUDA Alignment Metrics with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-alignment-metrics-cuda:latest 1000000
+
+run-svc: stream-svc
+	@echo ">>> Running Containerized CUDA Small Variant Caller with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-small-variant-caller-cuda:latest 100000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
