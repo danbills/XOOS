@@ -78,6 +78,10 @@ pangenome:
 	@echo ">>> Building CUDA Pangenome Consensus Caller with Nix Flake..."
 	$(NIX_BIN) build .#pangenome --print-build-logs
 
+fused:
+	@echo ">>> Building CUDA Fused Super-Kernel Engine (AOT + JIT) with Nix Flake..."
+	$(NIX_BIN) build .#fused --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -117,6 +121,10 @@ bench-tfe: tfe
 bench-pangenome: pangenome
 	@echo ">>> Executing Native CUDA Pangenome Consensus Caller Benchmark..."
 	./result/bin/pangenome_consensus_caller_cuda_bench 1000000
+
+bench-fused: fused
+	@echo ">>> Executing Native CUDA Fused Super-Kernel (AOT vs JIT) Benchmark..."
+	./result/bin/fused_stage2_cuda_bench 1000000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -166,6 +174,10 @@ docker-pangenome:
 	@echo ">>> Building Layered OCI Container for Pangenome Consensus Caller..."
 	$(NIX_BIN) build .#docker-pangenome --print-build-logs
 
+docker-fused:
+	@echo ">>> Building Layered OCI Container for Fused Super-Kernel Engine..."
+	$(NIX_BIN) build .#docker-fused --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -206,6 +218,10 @@ stream-pangenome:
 	@echo ">>> Streaming Pangenome Consensus Caller Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-pangenome | $(PODMAN_BIN) load
 
+stream-fused:
+	@echo ">>> Streaming Fused Super-Kernel Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-fused | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -241,6 +257,10 @@ run-tfe: stream-tfe
 run-pangenome: stream-pangenome
 	@echo ">>> Running Containerized CUDA Pangenome Consensus Caller with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-pangenome-consensus-caller-cuda:latest 1000000
+
+run-fused: stream-fused
+	@echo ">>> Running Containerized CUDA Fused Super-Kernel with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-fused-engine-cuda:latest 1000000
 
 # ----------------------------------------------------------------------------
 # Development Utilities

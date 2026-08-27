@@ -104,6 +104,11 @@
           subDir = "pangenome_consensus_caller";
         };
 
+        xoosFusedPkg = mkXoosCudaPackage {
+          pname = "xoos-fused-engine-cuda";
+          subDir = "fused_engine";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -177,6 +182,14 @@
           entrypointBinary = "/bin/pangenome_consensus_caller_cuda_bench";
         };
 
+        fusedDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosFusedPkg;
+          imageName = "roche-axelios/xoos-fused-engine-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/fused_stage2_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -204,6 +217,8 @@
           tumor-fraction-estimator = xoosTfePkg;
           pangenome = xoosPangenomePkg;
           pangenome-consensus-caller = xoosPangenomePkg;
+          fused = xoosFusedPkg;
+          fused-engine = xoosFusedPkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
@@ -215,6 +230,7 @@
           docker-str = strDocker.layered;
           docker-tfe = tfeDocker.layered;
           docker-pangenome = pangenomeDocker.layered;
+          docker-fused = fusedDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
@@ -226,6 +242,7 @@
           stream-docker-str = strDocker.streamed;
           stream-docker-tfe = tfeDocker.streamed;
           stream-docker-pangenome = pangenomeDocker.streamed;
+          stream-docker-fused = fusedDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 
