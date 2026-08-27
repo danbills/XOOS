@@ -50,6 +50,9 @@ bool FusedStage2CudaEngine::execute_aot_canonical(
 
     auto t_start = std::chrono::high_resolution_clock::now();
 
+    // Fast PCIe DMA Pinning
+    cudaHostRegister(reads.data(), num_reads * sizeof(FusedReadRecord), cudaHostRegisterDefault);
+
     cudaMemsetAsync(d_metrics_, 0, sizeof(GlobalMetricsAccumulator), stream_);
     cudaMemcpyAsync(d_reads_, reads.data(), num_reads * sizeof(FusedReadRecord), cudaMemcpyHostToDevice, stream_);
 
@@ -72,6 +75,8 @@ bool FusedStage2CudaEngine::execute_aot_canonical(
     cudaMemcpyAsync(&out_metrics, d_metrics_, sizeof(GlobalMetricsAccumulator), cudaMemcpyDeviceToHost, stream_);
     cudaMemcpyAsync(reads.data(), d_reads_, num_reads * sizeof(FusedReadRecord), cudaMemcpyDeviceToHost, stream_);
     cudaStreamSynchronize(stream_);
+
+    cudaHostUnregister(reads.data());
 
     float kernel_time = 0.0f;
     cudaEventElapsedTime(&kernel_time, evt_start, evt_stop);
@@ -117,6 +122,9 @@ bool FusedStage2CudaEngine::execute_jit_dynamic(
 
     auto t_start = std::chrono::high_resolution_clock::now();
 
+    // Fast PCIe DMA Pinning
+    cudaHostRegister(reads.data(), num_reads * sizeof(FusedReadRecord), cudaHostRegisterDefault);
+
     cudaMemsetAsync(d_metrics_, 0, sizeof(GlobalMetricsAccumulator), stream_);
     cudaMemcpyAsync(d_reads_, reads.data(), num_reads * sizeof(FusedReadRecord), cudaMemcpyHostToDevice, stream_);
 
@@ -147,6 +155,8 @@ bool FusedStage2CudaEngine::execute_jit_dynamic(
     cudaMemcpyAsync(&out_metrics, d_metrics_, sizeof(GlobalMetricsAccumulator), cudaMemcpyDeviceToHost, stream_);
     cudaMemcpyAsync(reads.data(), d_reads_, num_reads * sizeof(FusedReadRecord), cudaMemcpyDeviceToHost, stream_);
     cudaStreamSynchronize(stream_);
+
+    cudaHostUnregister(reads.data());
 
     float kernel_time = 0.0f;
     cudaEventElapsedTime(&kernel_time, evt_start, evt_stop);

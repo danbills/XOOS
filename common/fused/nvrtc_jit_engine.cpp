@@ -78,7 +78,7 @@ void NvrtcSuperKernelJit::ensure_cache_dir() {
 
 std::string NvrtcSuperKernelJit::compute_hash(const DynamicPolicyConfig& config) const {
     std::ostringstream ss;
-    ss << "k_fused_s2_"
+    ss << "k_fused_s2_smem_"
        << (config.enable_rescue ? "1" : "0") << "_"
        << (config.enable_collapse ? "1" : "0") << "_"
        << (config.enable_gc_metrics ? "1" : "0") << "_"
@@ -151,6 +151,26 @@ extern "C" __global__ void xoos_dynamic_fused_stage2_kernel(
     uint64_t num_reads,
     GlobalMetricsAccumulator* __restrict__ d_metrics
 ) {
+    __shared__ uint32_t s_gc_hist[NUM_GC_BINS];
+    __shared__ unsigned long long s_total_bases;
+    __shared__ unsigned long long s_total_gc_bases;
+    __shared__ unsigned long long s_rescued_reads;
+    __shared__ unsigned long long s_base_corrections;
+    __shared__ unsigned long long s_collapsed_families;
+    __shared__ unsigned long long s_duplicates_marked;
+
+    uint32_t tid = threadIdx.x;
+    if (tid < NUM_GC_BINS) s_gc_hist[tid] = 0;
+    if (tid == 0) {
+        s_total_bases = 0;
+        s_total_gc_bases = 0;
+        s_rescued_reads = 0;
+        s_base_corrections = 0;
+        s_collapsed_families = 0;
+        s_duplicates_marked = 0;
+    }
+    __syncthreads();
+
     size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     size_t stride = (size_t)gridDim.x * blockDim.x;
 
@@ -177,8 +197,8 @@ extern "C" __global__ void xoos_dynamic_fused_stage2_kernel(
             << "                }\n"
             << "            }\n"
             << "            if (corr > 0) {\n"
-            << "                atomicAdd((unsigned long long*)&d_metrics->total_rescued_reads, 1ULL);\n"
-            << "                atomicAdd((unsigned long long*)&d_metrics->total_base_corrections, (unsigned long long)corr);\n"
+            << "                atomicAdd(&s_rescued_reads, 1ULL);\n"
+            << "                atomicAdd(&s_base_corrections, (unsigned long long)corr);\n"
             << "            }\n"
             << "        }\n";
     }
@@ -192,9 +212,9 @@ extern "C" __global__ void xoos_dynamic_fused_stage2_kernel(
             << "        }\n"
             << "        uint32_t gc_pct = (len > 0) ? (gc_cnt * 100 / len) : 0;\n"
             << "        if (gc_pct > 100) gc_pct = 100;\n"
-            << "        atomicAdd(&d_metrics->gc_histogram[gc_pct], 1);\n"
-            << "        atomicAdd((unsigned long long*)&d_metrics->total_gc_bases, (unsigned long long)gc_cnt);\n"
-            << "        atomicAdd((unsigned long long*)&d_metrics->total_bases, (unsigned long long)len);\n";
+            << "        atomicAdd(&s_gc_hist[gc_pct], 1);\n"
+            << "        atomicAdd(&s_total_gc_bases, (unsigned long long)gc_cnt);\n"
+            << "        atomicAdd(&s_total_bases, (unsigned long long)len);\n";
     }
 
     if (config.enable_insert_metrics) {
@@ -208,14 +228,37 @@ extern "C" __global__ void xoos_dynamic_fused_stage2_kernel(
         src << "        // 4. Dynamic JIT Barcode Collapsing\n"
             << "        if (read.barcode_hash != 0) {\n"
             << "            if (read.is_duplicate) {\n"
-            << "                atomicAdd((unsigned long long*)&d_metrics->total_duplicates_marked, 1ULL);\n"
+            << "                atomicAdd(&s_duplicates_marked, 1ULL);\n"
             << "            } else {\n"
-            << "                atomicAdd((unsigned long long*)&d_metrics->total_collapsed_families, 1ULL);\n"
+            << "                atomicAdd(&s_collapsed_families, 1ULL);\n"
             << "            }\n"
             << "        }\n";
     }
 
     src << R"(
+    }
+
+    __syncthreads();
+
+    if (tid < NUM_GC_BINS && s_gc_hist[tid] > 0) {
+        atomicAdd(&d_metrics->gc_histogram[tid], s_gc_hist[tid]);
+    }
+
+    if (tid == 0) {
+        if (s_total_bases > 0) {
+            atomicAdd((unsigned long long*)&d_metrics->total_bases, s_total_bases);
+            atomicAdd((unsigned long long*)&d_metrics->total_gc_bases, s_total_gc_bases);
+        }
+        if (s_rescued_reads > 0) {
+            atomicAdd((unsigned long long*)&d_metrics->total_rescued_reads, s_rescued_reads);
+            atomicAdd((unsigned long long*)&d_metrics->total_base_corrections, s_base_corrections);
+        }
+        if (s_collapsed_families > 0) {
+            atomicAdd((unsigned long long*)&d_metrics->total_collapsed_families, s_collapsed_families);
+        }
+        if (s_duplicates_marked > 0) {
+            atomicAdd((unsigned long long*)&d_metrics->total_duplicates_marked, s_duplicates_marked);
+        }
     }
 }
 )";
