@@ -37,6 +37,10 @@
             pkgs.fmt
             pkgs.spdlog
             pkgs.xxhash
+            pkgs.cli11
+            pkgs.magic-enum
+            pkgs.microsoft-gsl
+            pkgs.taskflow
           ];
 
           cmakeFlags = [
@@ -65,6 +69,11 @@
           subDir = "aligner";
         };
 
+        xoosReadCollapserPkg = mkXoosCudaPackage {
+          pname = "xoos-read-collapser-cuda";
+          subDir = "read_collapser";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -82,6 +91,14 @@
           entrypointBinary = "/bin/aligner_cuda_bench";
         };
 
+        readCollapserDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosReadCollapserPkg;
+          imageName = "roche-axelios/xoos-read-collapser-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/read_collapser_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -95,14 +112,17 @@
           default = xoosDemuxPkg;
           demux = xoosDemuxPkg;
           aligner = xoosAlignerPkg;
+          read-collapser = xoosReadCollapserPkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
           docker-aligner = alignerDocker.layered;
+          docker-read-collapser = readCollapserDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
           stream-docker-aligner = alignerDocker.streamed;
+          stream-docker-read-collapser = readCollapserDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 

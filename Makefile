@@ -50,6 +50,10 @@ demux:
 	@echo ">>> Building CUDA Demux with Nix Flake..."
 	$(NIX_BIN) build .#demux --print-build-logs
 
+read-collapser:
+	@echo ">>> Building CUDA Read Collapser with Nix Flake..."
+	$(NIX_BIN) build .#read-collapser --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -61,6 +65,10 @@ bench-aligner: aligner
 bench-demux: demux
 	@echo ">>> Executing Native CUDA Demux Benchmark..."
 	./result/bin/demux_cuda_bench 500000
+
+bench-read-collapser: read-collapser
+	@echo ">>> Executing Native CUDA Read Collapser Benchmark..."
+	./result/bin/read_collapser_cuda_bench 500000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -82,6 +90,10 @@ docker-demux:
 	@echo ">>> Building Layered OCI Container for Demux..."
 	$(NIX_BIN) build .#docker-demux --print-build-logs
 
+docker-read-collapser:
+	@echo ">>> Building Layered OCI Container for Read Collapser..."
+	$(NIX_BIN) build .#docker-read-collapser --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -94,6 +106,10 @@ stream-demux:
 	@echo ">>> Streaming Demux Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-demux | $(PODMAN_BIN) load
 
+stream-read-collapser:
+	@echo ">>> Streaming Read Collapser Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-read-collapser | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -101,6 +117,10 @@ run-aligner: stream-aligner
 run-demux: stream-demux
 	@echo ">>> Running Containerized CUDA Demux with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-demux-cuda:latest 500000
+
+run-read-collapser: stream-read-collapser
+	@echo ">>> Running Containerized CUDA Read Collapser with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-read-collapser-cuda:latest 500000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
