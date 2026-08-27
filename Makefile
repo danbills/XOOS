@@ -74,6 +74,10 @@ tfe:
 	@echo ">>> Building CUDA Tumor Fraction Estimator with Nix Flake..."
 	$(NIX_BIN) build .#tfe --print-build-logs
 
+pangenome:
+	@echo ">>> Building CUDA Pangenome Consensus Caller with Nix Flake..."
+	$(NIX_BIN) build .#pangenome --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -109,6 +113,10 @@ bench-str: str
 bench-tfe: tfe
 	@echo ">>> Executing Native CUDA Tumor Fraction Estimator Benchmark..."
 	./result/bin/tumor_fraction_estimator_cuda_bench 5000
+
+bench-pangenome: pangenome
+	@echo ">>> Executing Native CUDA Pangenome Consensus Caller Benchmark..."
+	./result/bin/pangenome_consensus_caller_cuda_bench 1000000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -154,6 +162,10 @@ docker-tfe:
 	@echo ">>> Building Layered OCI Container for Tumor Fraction Estimator..."
 	$(NIX_BIN) build .#docker-tfe --print-build-logs
 
+docker-pangenome:
+	@echo ">>> Building Layered OCI Container for Pangenome Consensus Caller..."
+	$(NIX_BIN) build .#docker-pangenome --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -190,6 +202,10 @@ stream-tfe:
 	@echo ">>> Streaming Tumor Fraction Estimator Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-tfe | $(PODMAN_BIN) load
 
+stream-pangenome:
+	@echo ">>> Streaming Pangenome Consensus Caller Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-pangenome | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -221,6 +237,10 @@ run-str: stream-str
 run-tfe: stream-tfe
 	@echo ">>> Running Containerized CUDA Tumor Fraction Estimator with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-tumor-fraction-estimator-cuda:latest 5000
+
+run-pangenome: stream-pangenome
+	@echo ">>> Running Containerized CUDA Pangenome Consensus Caller with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-pangenome-consensus-caller-cuda:latest 1000000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
