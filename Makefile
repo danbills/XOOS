@@ -70,6 +70,10 @@ str:
 	@echo ">>> Building CUDA Short Tandem Repeat (STR) Caller with Nix Flake..."
 	$(NIX_BIN) build .#str --print-build-logs
 
+tfe:
+	@echo ">>> Building CUDA Tumor Fraction Estimator with Nix Flake..."
+	$(NIX_BIN) build .#tfe --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -101,6 +105,10 @@ bench-cnv: cnv
 bench-str: str
 	@echo ">>> Executing Native CUDA STR Caller Benchmark..."
 	./result/bin/str_caller_cuda_bench 2000
+
+bench-tfe: tfe
+	@echo ">>> Executing Native CUDA Tumor Fraction Estimator Benchmark..."
+	./result/bin/tumor_fraction_estimator_cuda_bench 5000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -142,6 +150,10 @@ docker-str:
 	@echo ">>> Building Layered OCI Container for STR Caller..."
 	$(NIX_BIN) build .#docker-str --print-build-logs
 
+docker-tfe:
+	@echo ">>> Building Layered OCI Container for Tumor Fraction Estimator..."
+	$(NIX_BIN) build .#docker-tfe --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -174,6 +186,10 @@ stream-str:
 	@echo ">>> Streaming STR Caller Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-str | $(PODMAN_BIN) load
 
+stream-tfe:
+	@echo ">>> Streaming Tumor Fraction Estimator Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-tfe | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -201,6 +217,10 @@ run-cnv: stream-cnv
 run-str: stream-str
 	@echo ">>> Running Containerized CUDA STR Caller with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-str-caller-cuda:latest 2000
+
+run-tfe: stream-tfe
+	@echo ">>> Running Containerized CUDA Tumor Fraction Estimator with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-tumor-fraction-estimator-cuda:latest 5000
 
 # ----------------------------------------------------------------------------
 # Development Utilities

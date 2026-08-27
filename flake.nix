@@ -94,6 +94,11 @@
           subDir = "str_caller";
         };
 
+        xoosTfePkg = mkXoosCudaPackage {
+          pname = "xoos-tumor-fraction-estimator-cuda";
+          subDir = "tumor_fraction_estimator";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -151,6 +156,14 @@
           entrypointBinary = "/bin/str_caller_cuda_bench";
         };
 
+        tfeDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosTfePkg;
+          imageName = "roche-axelios/xoos-tumor-fraction-estimator-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/tumor_fraction_estimator_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -173,6 +186,9 @@
           copy-number-caller = xoosCnvPkg;
           str = xoosStrPkg;
           str-caller = xoosStrPkg;
+          tfe = xoosTfePkg;
+          tumor-fraction = xoosTfePkg;
+          tumor-fraction-estimator = xoosTfePkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
@@ -182,6 +198,7 @@
           docker-svc = svcDocker.layered;
           docker-cnv = cnvDocker.layered;
           docker-str = strDocker.layered;
+          docker-tfe = tfeDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
@@ -191,6 +208,7 @@
           stream-docker-svc = svcDocker.streamed;
           stream-docker-cnv = cnvDocker.streamed;
           stream-docker-str = strDocker.streamed;
+          stream-docker-tfe = tfeDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 
