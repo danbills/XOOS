@@ -24,12 +24,15 @@
           nativeBuildInputs = [
             pkgs.cmake
             pkgs.ninja
+            pkgs.pkg-config
             pkgs.cudaPackages.cuda_nvcc
             pkgs.cudaPackages.cudatoolkit
           ];
 
           buildInputs = [
             pkgs.cudaPackages.cuda_cudart
+            pkgs.cudaPackages.cuda_nvtx
+            pkgs.htslib
             pkgs.zlib
             pkgs.zstd
             pkgs.boost

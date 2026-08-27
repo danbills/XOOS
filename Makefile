@@ -126,6 +126,18 @@ bench-fused: fused
 	@echo ">>> Executing Native CUDA Fused Super-Kernel (AOT vs JIT) Benchmark..."
 	./result/bin/fused_stage2_cuda_bench 1000000
 
+bench-realdata: fused
+	@echo ">>> Executing Real Roche SBX Chr20 BAM Pipeline Benchmark..."
+	./result/bin/roche_sbx_cuda_eval 1000000 input/HG002.roche_sbx.chr20.bam
+
+profile-realdata: fused
+	@echo ">>> Profiling Real Roche SBX Execution with Nsight Systems (nsys)..."
+	nsys profile --stats=true --force-overwrite=true -o /tmp/roche_sbx_nsys_profile ./result/bin/roche_sbx_cuda_eval 1000000 input/HG002.roche_sbx.chr20.bam
+
+ncu-realdata: fused
+	@echo ">>> Profiling Real Roche SBX Kernels with Nsight Compute (ncu)..."
+	ncu --metrics sm__warps_active.avg.pct_of_peak_sustained_active,gpu__time_duration.sum,dram__throughput.avg.pct_of_peak_sustained_elapsed ./result/bin/roche_sbx_cuda_eval 100000 input/HG002.roche_sbx.chr20.bam
+
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
 	nsys profile --stats=true ./result/bin/aligner_cuda_bench 500000
