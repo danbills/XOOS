@@ -89,6 +89,11 @@
           subDir = "copy_number_caller";
         };
 
+        xoosStrPkg = mkXoosCudaPackage {
+          pname = "xoos-str-caller-cuda";
+          subDir = "str_caller";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -138,6 +143,14 @@
           entrypointBinary = "/bin/copy_number_caller_cuda_bench";
         };
 
+        strDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosStrPkg;
+          imageName = "roche-axelios/xoos-str-caller-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/str_caller_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -158,6 +171,8 @@
           small-variant-caller = xoosSvcPkg;
           cnv = xoosCnvPkg;
           copy-number-caller = xoosCnvPkg;
+          str = xoosStrPkg;
+          str-caller = xoosStrPkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
@@ -166,6 +181,7 @@
           docker-metrics = metricsDocker.layered;
           docker-svc = svcDocker.layered;
           docker-cnv = cnvDocker.layered;
+          docker-str = strDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
@@ -174,6 +190,7 @@
           stream-docker-metrics = metricsDocker.streamed;
           stream-docker-svc = svcDocker.streamed;
           stream-docker-cnv = cnvDocker.streamed;
+          stream-docker-str = strDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 

@@ -66,6 +66,10 @@ cnv:
 	@echo ">>> Building CUDA Copy Number Caller with Nix Flake..."
 	$(NIX_BIN) build .#cnv --print-build-logs
 
+str:
+	@echo ">>> Building CUDA Short Tandem Repeat (STR) Caller with Nix Flake..."
+	$(NIX_BIN) build .#str --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -93,6 +97,10 @@ bench-svc: svc
 bench-cnv: cnv
 	@echo ">>> Executing Native CUDA Copy Number Caller Benchmark..."
 	./result/bin/copy_number_caller_cuda_bench 500000
+
+bench-str: str
+	@echo ">>> Executing Native CUDA STR Caller Benchmark..."
+	./result/bin/str_caller_cuda_bench 2000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -130,6 +138,10 @@ docker-cnv:
 	@echo ">>> Building Layered OCI Container for Copy Number Caller..."
 	$(NIX_BIN) build .#docker-cnv --print-build-logs
 
+docker-str:
+	@echo ">>> Building Layered OCI Container for STR Caller..."
+	$(NIX_BIN) build .#docker-str --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -158,6 +170,10 @@ stream-cnv:
 	@echo ">>> Streaming Copy Number Caller Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-cnv | $(PODMAN_BIN) load
 
+stream-str:
+	@echo ">>> Streaming STR Caller Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-str | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -181,6 +197,10 @@ run-svc: stream-svc
 run-cnv: stream-cnv
 	@echo ">>> Running Containerized CUDA Copy Number Caller with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-copy-number-caller-cuda:latest 500000
+
+run-str: stream-str
+	@echo ">>> Running Containerized CUDA STR Caller with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-str-caller-cuda:latest 2000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
