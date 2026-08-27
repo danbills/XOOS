@@ -127,8 +127,12 @@ bench-fused: fused
 	./result/bin/fused_stage2_cuda_bench 1000000
 
 bench-realdata: fused
-	@echo ">>> Executing Real Roche SBX Chr20 BAM Pipeline Benchmark..."
+	@echo ">>> Executing Real Roche SBX Chr20 BAM Pipeline Benchmark (1M reads)..."
 	./result/bin/roche_sbx_cuda_eval 1000000 input/HG002.roche_sbx.chr20.bam
+
+bench-fullscale: fused
+	@echo ">>> Executing Full Whole-Chromosome 20 GPU Pipeline (19.6M reads / 4.3 Gbp)..."
+	./result/bin/roche_sbx_chr20_fullscale 0 input/HG002.roche_sbx.chr20.bam
 
 profile-realdata: fused
 	@echo ">>> Profiling Real Roche SBX Execution with Nsight Systems (nsys)..."

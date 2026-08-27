@@ -24,4 +24,14 @@ if (CMAKE_CUDA_COMPILER)
         fused_cuda_core
         ${HTSLIB_LIBRARIES}
     )
+
+    add_default_executable(roche_sbx_chr20_fullscale
+        ../../apps/roche-sbx-chr20-fullscale.cpp
+    )
+    target_include_directories(roche_sbx_chr20_fullscale PRIVATE ../../common ../../common/fused ${HTSLIB_INCLUDE_DIRS})
+    target_link_libraries(roche_sbx_chr20_fullscale
+        PRIVATE
+        fused_cuda_core
+        ${HTSLIB_LIBRARIES}
+    )
 endif ()
