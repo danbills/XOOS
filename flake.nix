@@ -74,6 +74,11 @@
           subDir = "read_collapser";
         };
 
+        xoosMetricsPkg = mkXoosCudaPackage {
+          pname = "xoos-alignment-metrics-cuda";
+          subDir = "alignment_metrics";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -99,6 +104,14 @@
           entrypointBinary = "/bin/read_collapser_cuda_bench";
         };
 
+        metricsDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosMetricsPkg;
+          imageName = "roche-axelios/xoos-alignment-metrics-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/alignment_metrics_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -113,16 +126,20 @@
           demux = xoosDemuxPkg;
           aligner = xoosAlignerPkg;
           read-collapser = xoosReadCollapserPkg;
+          metrics = xoosMetricsPkg;
+          alignment-metrics = xoosMetricsPkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
           docker-aligner = alignerDocker.layered;
           docker-read-collapser = readCollapserDocker.layered;
+          docker-metrics = metricsDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
           stream-docker-aligner = alignerDocker.streamed;
           stream-docker-read-collapser = readCollapserDocker.streamed;
+          stream-docker-metrics = metricsDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 

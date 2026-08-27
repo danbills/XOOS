@@ -54,6 +54,10 @@ read-collapser:
 	@echo ">>> Building CUDA Read Collapser with Nix Flake..."
 	$(NIX_BIN) build .#read-collapser --print-build-logs
 
+metrics:
+	@echo ">>> Building CUDA Alignment Metrics with Nix Flake..."
+	$(NIX_BIN) build .#metrics --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -69,6 +73,10 @@ bench-demux: demux
 bench-read-collapser: read-collapser
 	@echo ">>> Executing Native CUDA Read Collapser Benchmark..."
 	./result/bin/read_collapser_cuda_bench 500000
+
+bench-metrics: metrics
+	@echo ">>> Executing Native CUDA Alignment Metrics Benchmark..."
+	./result/bin/alignment_metrics_cuda_bench 1000000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -94,6 +102,10 @@ docker-read-collapser:
 	@echo ">>> Building Layered OCI Container for Read Collapser..."
 	$(NIX_BIN) build .#docker-read-collapser --print-build-logs
 
+docker-metrics:
+	@echo ">>> Building Layered OCI Container for Alignment Metrics..."
+	$(NIX_BIN) build .#docker-metrics --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -110,6 +122,10 @@ stream-read-collapser:
 	@echo ">>> Streaming Read Collapser Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-read-collapser | $(PODMAN_BIN) load
 
+stream-metrics:
+	@echo ">>> Streaming Alignment Metrics Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-metrics | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -121,6 +137,10 @@ run-demux: stream-demux
 run-read-collapser: stream-read-collapser
 	@echo ">>> Running Containerized CUDA Read Collapser with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-read-collapser-cuda:latest 500000
+
+run-metrics: stream-metrics
+	@echo ">>> Running Containerized CUDA Alignment Metrics with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-alignment-metrics-cuda:latest 1000000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
