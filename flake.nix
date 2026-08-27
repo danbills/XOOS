@@ -84,6 +84,11 @@
           subDir = "small_variant_caller";
         };
 
+        xoosCnvPkg = mkXoosCudaPackage {
+          pname = "xoos-copy-number-caller-cuda";
+          subDir = "copy_number_caller";
+        };
+
         # Layered Docker Images
         demuxDocker = import ./nix/docker-image.nix {
           inherit pkgs;
@@ -125,6 +130,14 @@
           entrypointBinary = "/bin/small_variant_caller_cuda_bench";
         };
 
+        cnvDocker = import ./nix/docker-image.nix {
+          inherit pkgs;
+          package = xoosCnvPkg;
+          imageName = "roche-axelios/xoos-copy-number-caller-cuda";
+          imageTag = "latest";
+          entrypointBinary = "/bin/copy_number_caller_cuda_bench";
+        };
+
         unifiedDocker = import ./nix/docker-image.nix {
           inherit pkgs;
           package = xoosDemuxPkg;
@@ -143,6 +156,8 @@
           alignment-metrics = xoosMetricsPkg;
           svc = xoosSvcPkg;
           small-variant-caller = xoosSvcPkg;
+          cnv = xoosCnvPkg;
+          copy-number-caller = xoosCnvPkg;
           
           # Container outputs
           docker-demux = demuxDocker.layered;
@@ -150,6 +165,7 @@
           docker-read-collapser = readCollapserDocker.layered;
           docker-metrics = metricsDocker.layered;
           docker-svc = svcDocker.layered;
+          docker-cnv = cnvDocker.layered;
           docker-all = unifiedDocker.layered;
           
           stream-docker-demux = demuxDocker.streamed;
@@ -157,6 +173,7 @@
           stream-docker-read-collapser = readCollapserDocker.streamed;
           stream-docker-metrics = metricsDocker.streamed;
           stream-docker-svc = svcDocker.streamed;
+          stream-docker-cnv = cnvDocker.streamed;
           stream-docker-all = unifiedDocker.streamed;
         };
 

@@ -1,14 +1,19 @@
-find_package(Armadillo REQUIRED)
-find_package(BigWig REQUIRED)
-find_package(CLI11 REQUIRED)
-find_package(Taskflow REQUIRED)
-find_package(ZLIB REQUIRED)
-find_package(xoos-cgranges REQUIRED)
-find_package(xoos-hclust-cpp REQUIRED)
-find_package(xoos-htslib REQUIRED)
-find_package(vincentlaucsb-csv-parser REQUIRED)
+# ============================================================================
+# XOOS Copy Number Caller Core Library CMakeLists.txt
+# ============================================================================
 
-add_default_library(copy_number_caller_core
+find_package(Armadillo QUIET)
+find_package(BigWig QUIET)
+find_package(CLI11 QUIET)
+find_package(Taskflow QUIET)
+find_package(ZLIB QUIET)
+find_package(xoos-cgranges QUIET)
+find_package(xoos-hclust-cpp QUIET)
+find_package(xoos-htslib QUIET)
+find_package(vincentlaucsb-csv-parser QUIET)
+
+if (Armadillo_FOUND AND BigWig_FOUND AND CLI11_FOUND AND Taskflow_FOUND AND xoos-htslib_FOUND)
+    add_default_library(copy_number_caller_core
         augment-baits/augment-baits.cpp
         calculate-coverage/calculate-coverage-taskflow-graph.cpp
         calculate-coverage/calculate-coverage.cpp
@@ -58,91 +63,67 @@ add_default_library(copy_number_caller_core
         two-sample-logr/calculate-logrs.cpp
         two-sample-logr/tumor-normal.cpp
         two-sample-logr/two-sample-logr.cpp
+        utility/utility.cpp
+        utility/vector-math.cpp
+        utility/split-string.cpp
+        utility/define-logr-options.cpp
         baits.cpp
         bigwig_cpp.cpp
         coverage.cpp
-        io/fai.cpp
         filter-observations.cpp
-        intervals/interval-tools.cpp
         mapq-utils.cpp
-        io/write-baf-values.cpp
-        io/write-bigwig.cpp
         observations.cpp
         panel-of-normals.cpp
         sex.cpp
         singular-value-decomposition.cpp
-        utility/utility-functions.cpp
-        io/write-igv-xml.cpp
-)
+    )
 
-target_include_directories(copy_number_caller_core SYSTEM INTERFACE .)
-target_include_directories(copy_number_caller_core PRIVATE .)
+    target_include_directories(copy_number_caller_core SYSTEM INTERFACE .)
+    target_include_directories(copy_number_caller_core PRIVATE .)
 
-target_link_libraries(copy_number_caller_core
+    target_link_libraries(copy_number_caller_core
         PUBLIC
         armadillo::armadillo
         BigWig::BigWig
-        xoos-cgranges::xoos-cgranges
-        vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
-        PRIVATE
         CLI11::CLI11
         Taskflow::Taskflow
+        ZLIB::ZLIB
+        xoos-cgranges::xoos-cgranges
         xoos-hclust-cpp::xoos-hclust-cpp
-)
+        xoos-htslib::xoos-htslib
+        vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
+    )
 
-target_link_xoos_libraries(copy_number_caller_core
+    target_link_xoos_libraries(copy_number_caller_core
         PRIVATE
         log
         io
         util
         enum
-        error
         gc_correct
         types
         stats
-)
-
-target_link_xoos_libraries(copy_number_caller_core
         PUBLIC
         cli
-)
+    )
+endif ()
 
+# CUDA GPU Acceleration for copy_number_caller
+include(CheckLanguage)
+check_language(CUDA)
+if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA Acceleration: ENABLED for copy_number_caller_core (Compiler: ${CMAKE_CUDA_COMPILER})")
 
-target_compile_definitions(copy_number_caller_core
-        PRIVATE
-        PROGRAM_NAME="copy_number_caller"
-        VERSION="${VERSION}"
-)
-
-add_default_library(generate_panel_of_normals_core
-        generate-panel-of-normals/define-generate-panel-of-normals-options.cpp
-        generate-panel-of-normals/generate-panel-of-normals.cpp
-        generate-panel-of-normals/generate-panel-of-normals-cli.cpp
-)
-
-target_include_directories(generate_panel_of_normals_core SYSTEM INTERFACE .)
-target_include_directories(generate_panel_of_normals_core PRIVATE .)
-target_link_libraries(generate_panel_of_normals_core
-        PUBLIC
-        armadillo::armadillo
-        PRIVATE
-        copy_number_caller_core
-        BigWig::BigWig
-        CLI11::CLI11
-        Taskflow::Taskflow
-)
-
-target_link_xoos_libraries(generate_panel_of_normals_core
-        PRIVATE
-        log
-        io
-        util
-        enum
-        gc_correct
-)
-
-target_compile_definitions(generate_panel_of_normals_core
-        PRIVATE
-        PROGRAM_NAME="generate_panel_of_normals"
-        VERSION="${VERSION}"
-)
+    add_default_library(copy_number_caller_cuda_core
+        cuda/cnv_caller_cuda.cu
+    )
+    target_include_directories(copy_number_caller_cuda_core PRIVATE . cuda)
+    target_include_directories(copy_number_caller_cuda_core SYSTEM INTERFACE . cuda)
+    target_link_libraries(copy_number_caller_cuda_core PUBLIC CUDA::cudart)
+    target_link_xoos_libraries(copy_number_caller_cuda_core PUBLIC types)
+    target_compile_definitions(copy_number_caller_cuda_core PUBLIC XOOS_CUDA_ENABLED=1)
+endif ()

@@ -62,6 +62,10 @@ svc:
 	@echo ">>> Building CUDA Small Variant Caller with Nix Flake..."
 	$(NIX_BIN) build .#svc --print-build-logs
 
+cnv:
+	@echo ">>> Building CUDA Copy Number Caller with Nix Flake..."
+	$(NIX_BIN) build .#cnv --print-build-logs
+
 # ----------------------------------------------------------------------------
 # Benchmarking & Profiling Targets
 # ----------------------------------------------------------------------------
@@ -85,6 +89,10 @@ bench-metrics: metrics
 bench-svc: svc
 	@echo ">>> Executing Native CUDA Small Variant Caller Benchmark..."
 	./result/bin/small_variant_caller_cuda_bench 100000
+
+bench-cnv: cnv
+	@echo ">>> Executing Native CUDA Copy Number Caller Benchmark..."
+	./result/bin/copy_number_caller_cuda_bench 500000
 
 profile-aligner: aligner
 	@echo ">>> Profiling CUDA Aligner with Nsight Systems (nsys)..."
@@ -118,6 +126,10 @@ docker-svc:
 	@echo ">>> Building Layered OCI Container for Small Variant Caller..."
 	$(NIX_BIN) build .#docker-svc --print-build-logs
 
+docker-cnv:
+	@echo ">>> Building Layered OCI Container for Copy Number Caller..."
+	$(NIX_BIN) build .#docker-cnv --print-build-logs
+
 docker-all:
 	@echo ">>> Building Unified Layered OCI Container..."
 	$(NIX_BIN) build .#docker-all --print-build-logs
@@ -142,6 +154,10 @@ stream-svc:
 	@echo ">>> Streaming Small Variant Caller Container directly into Podman..."
 	$(NIX_BIN) run .#stream-docker-svc | $(PODMAN_BIN) load
 
+stream-cnv:
+	@echo ">>> Streaming Copy Number Caller Container directly into Podman..."
+	$(NIX_BIN) run .#stream-docker-cnv | $(PODMAN_BIN) load
+
 run-aligner: stream-aligner
 	@echo ">>> Running Containerized CUDA Aligner with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-aligner-cuda:latest 500000
@@ -161,6 +177,10 @@ run-metrics: stream-metrics
 run-svc: stream-svc
 	@echo ">>> Running Containerized CUDA Small Variant Caller with GPU Passthrough..."
 	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-small-variant-caller-cuda:latest 100000
+
+run-cnv: stream-cnv
+	@echo ">>> Running Containerized CUDA Copy Number Caller with GPU Passthrough..."
+	$(PODMAN_BIN) run --rm --device nvidia.com/gpu=all localhost/roche-axelios/xoos-copy-number-caller-cuda:latest 500000
 
 # ----------------------------------------------------------------------------
 # Development Utilities
