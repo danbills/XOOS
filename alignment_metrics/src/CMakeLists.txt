@@ -1,4 +1,12 @@
-add_default_library(alignment_metrics_core
+# ============================================================================
+# XOOS Alignment Metrics Core Library CMakeLists.txt
+# ============================================================================
+
+find_package(xoos-htslib QUIET)
+find_package(vincentlaucsb-csv-parser QUIET)
+
+if (xoos-htslib_FOUND AND vincentlaucsb-csv-parser_FOUND)
+    add_default_library(alignment_metrics_core
         core/alignment.cpp
         core/hp-error-for-read.cpp
         core/interval.cpp
@@ -31,17 +39,17 @@ add_default_library(alignment_metrics_core
         alignment-metrics.cpp
         metrics-worker.cpp
         run-alignment-metrics.cpp
-)
-target_include_directories(alignment_metrics_core
+    )
+    target_include_directories(alignment_metrics_core
         PRIVATE
         .
-)
-target_include_directories(alignment_metrics_core
+    )
+    target_include_directories(alignment_metrics_core
         SYSTEM
         INTERFACE
         .
-)
-target_link_xoos_libraries(alignment_metrics_core
+    )
+    target_link_xoos_libraries(alignment_metrics_core
         PUBLIC
         histogram
         io
@@ -53,18 +61,40 @@ target_link_xoos_libraries(alignment_metrics_core
         error
         log
         util
-)
+    )
 
-find_package(Taskflow REQUIRED)
-find_package(vincentlaucsb-csv-parser REQUIRED)
-find_package(Microsoft.GSL REQUIRED)
-find_package(unordered_dense REQUIRED)
+    find_package(Taskflow QUIET)
+    find_package(Microsoft.GSL QUIET)
+    find_package(unordered_dense QUIET)
 
-target_link_libraries(alignment_metrics_core
-        PUBLIC
-        Taskflow::Taskflow
-        PRIVATE
-        vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
-        Microsoft.GSL::GSL
-        unordered_dense::unordered_dense
-)
+    if (Taskflow_FOUND AND Microsoft.GSL_FOUND AND unordered_dense_FOUND)
+        target_link_libraries(alignment_metrics_core
+            PUBLIC
+            Taskflow::Taskflow
+            PRIVATE
+            vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
+            Microsoft.GSL::GSL
+            unordered_dense::unordered_dense
+        )
+    endif ()
+endif ()
+
+# CUDA GPU Acceleration for alignment_metrics
+include(CheckLanguage)
+check_language(CUDA)
+if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA Acceleration: ENABLED for alignment_metrics_core (Compiler: ${CMAKE_CUDA_COMPILER})")
+
+    add_default_library(alignment_metrics_cuda_core
+        cuda/alignment_metrics_cuda.cu
+    )
+    target_include_directories(alignment_metrics_cuda_core PRIVATE . cuda)
+    target_include_directories(alignment_metrics_cuda_core SYSTEM INTERFACE . cuda)
+    target_link_libraries(alignment_metrics_cuda_core PUBLIC CUDA::cudart)
+    target_link_xoos_libraries(alignment_metrics_cuda_core PUBLIC types)
+    target_compile_definitions(alignment_metrics_cuda_core PUBLIC XOOS_CUDA_ENABLED=1)
+endif ()

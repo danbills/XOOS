@@ -1,0 +1,18 @@
+result
+result-*
+build/
+.cache/
+*.o
+*.so
+*.a
+
+# Test data & alignment binaries
+input/
+*.bam
+*.bai
+*.cram
+*.crai
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz

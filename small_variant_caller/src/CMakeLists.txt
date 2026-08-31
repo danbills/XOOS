@@ -1,4 +1,12 @@
-add_default_library(svc_core
+# ============================================================================
+# XOOS Small Variant Caller Core Library CMakeLists.txt
+# ============================================================================
+
+find_package(xoos-lightgbm QUIET)
+find_package(vincentlaucsb-csv-parser QUIET)
+
+if (xoos-lightgbm_FOUND AND vincentlaucsb-csv-parser_FOUND)
+    add_default_library(svc_core
         compute-bam-features/alignment-reader.cpp
         compute-bam-features/compute-bam-features-cli.cpp
         compute-bam-features/compute-bam-features.cpp
@@ -13,7 +21,6 @@ add_default_library(svc_core
         compute-vcf-features/vcf-header-util.cpp
         core/bam-feature-collection.cpp
         core/column-names.cpp
-
         core/config.cpp
         core/feature-normalization.cpp
         core/filtering.cpp
@@ -55,18 +62,18 @@ add_default_library(svc_core
         vcf-to-bed/vcf-to-bed.cpp
         generate-pon/generate-pon-cli.cpp
         generate-pon/generate-pon.cpp
-)
-target_include_directories(svc_core
+    )
+    target_include_directories(svc_core
         PRIVATE
         .
-)
-target_include_directories(svc_core
+    )
+    target_include_directories(svc_core
         SYSTEM
         INTERFACE
         .
-)
+    )
 
-target_link_xoos_libraries(svc_core
+    target_link_xoos_libraries(svc_core
         PRIVATE
         PUBLIC
         log
@@ -78,16 +85,14 @@ target_link_xoos_libraries(svc_core
         error
         sex_predict
         yc_decode
-)
+    )
 
-find_package(xoos-lightgbm REQUIRED)
-find_package(ZLIB REQUIRED)
-find_package(Taskflow REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package(vincentlaucsb-csv-parser REQUIRED)
-find_package(zstd REQUIRED)
+    find_package(ZLIB REQUIRED)
+    find_package(Taskflow REQUIRED)
+    find_package(nlohmann_json REQUIRED)
+    find_package(zstd REQUIRED)
 
-target_link_libraries(svc_core
+    target_link_libraries(svc_core
         PUBLIC
         xoos-lightgbm::xoos-lightgbm
         ZLIB::ZLIB
@@ -95,4 +100,25 @@ target_link_libraries(svc_core
         nlohmann_json::nlohmann_json
         vincentlaucsb-csv-parser::vincentlaucsb-csv-parser
         zstd::libzstd_static
-)
+    )
+endif ()
+
+# CUDA GPU Acceleration for small_variant_caller (PairHMM & Bayesian Genotyping)
+include(CheckLanguage)
+check_language(CUDA)
+if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA Acceleration: ENABLED for svc_core (Compiler: ${CMAKE_CUDA_COMPILER})")
+
+    add_default_library(svc_cuda_core
+        cuda/variant_caller_cuda.cu
+    )
+    target_include_directories(svc_cuda_core PRIVATE . cuda)
+    target_include_directories(svc_cuda_core SYSTEM INTERFACE . cuda)
+    target_link_libraries(svc_cuda_core PUBLIC CUDA::cudart)
+    target_link_xoos_libraries(svc_cuda_core PUBLIC types)
+    target_compile_definitions(svc_cuda_core PUBLIC XOOS_CUDA_ENABLED=1)
+endif ()
